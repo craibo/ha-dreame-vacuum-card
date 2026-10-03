@@ -47,8 +47,59 @@ Both features need the map camera's `rooms` attribute (a dict keyed by room id).
 - The code-to-label mapping for suction and water (the integration's `SUCTION_LEVEL_CODE_TO_NAME` and related maps).
 - Whether `wetness_level` replaces `water_volume` on mop-pad-humidity models.
 
+## 3. Map editor (phases 1-3 and 5 implemented, untested on a device; phase 4 deferred)
+
+**Verdict: supported.** The integration registers entity services for most of what the Dreame app's map editor does, and the map camera already exposes the current state of each element. Writes go through `dreame_vacuum.*` services on the vacuum entity, using the same robot coordinates the card already converts with `toVac` / `toImg`.
+
+### What the integration supports
+
+| Area | Service | Current state (camera attribute) |
+|---|---|---|
+| Virtual walls | `vacuum_set_restricted_zone` (`walls`: `[[x0,y0,x1,y1]]`) | `virtual_walls` (this device has two) |
+| No-go zones | `vacuum_set_restricted_zone` (`zones`) | `no_go_areas` |
+| No-mop zones | `vacuum_set_restricted_zone` (`no_mops`) | `no_mopping_areas` |
+| Carpets | `vacuum_set_carpet_area`, `vacuum_set_carpet_type` | `carpets`, `deleted_carpets`, `detected_carpets` |
+| Thresholds | `vacuum_set_virtual_threshold`, `vacuum_set_threshold` | `virtual_thresholds`, `passable_thresholds`, `impassable_thresholds` |
+| Merge rooms | `vacuum_merge_segments` (`segments`: ids) | `rooms` |
+| Split a room | `vacuum_split_segments` (`segment`, `line`: `[x0,y0,x1,y1]`) | `rooms` |
+| Rename room | `vacuum_rename_segment` (`segment_id`, `segment_name`) | `rooms[].name` |
+| Room type, hidden rooms, floor material | `vacuum_set_segment_type`, `vacuum_set_hidden_segments`, `vacuum_set_floor_material` | `rooms` |
+| Furniture, curtains, router, predefined points | `vacuum_set_furniture`, `vacuum_set_curtain`, `vacuum_set_router_position`, `vacuum_set_predefined_points` | `furnitures`, `curtains`, `router_position`, `predefined_points` |
+| Map management | `vacuum_rename_map`, `vacuum_delete_map`, `vacuum_backup_map`, `vacuum_restore_map` | `maps`, `recovery_map` on the vacuum entity |
+| New (temporary) map | `vacuum_save_temporary_map`, `vacuum_discard_temporary_map`, `vacuum_replace_temporary_map` | `has_temporary_map` |
+
+Not planned: wall and door geometry (`vacuum_set_walls` takes 11 integers per door), low-lying areas and ramps.
+
+### Constraints from the source
+- Edits are refused while the robot is running, and room edits are refused while a temporary map exists.
+- Room count is capped (29 or 49 depending on the map version).
+- `vacuum_set_restricted_zone` is a full replacement (confirmed in the source): any list you omit is wiped, so the card always sends walls, no-go and no-mop together. The carpet and threshold services are still unverified.
+- No-go and no-mop zones are axis-aligned rectangles (`[x0,y0,x1,y1]`; the integration normalises them), so rotation is not a concern for zones.
+
+### UX
+- A pencil button enters Edit mode, which replaces the Room/All/Zone bar with a toolbar: **Walls, No-Go, No-Mop, Carpet, Rooms, Done**.
+- Changes are staged in a local draft and shown on the map. **Apply** sends them, and **Cancel** discards them.
+- Before the first apply, offer to run `vacuum_backup_map`. Destructive operations (merge, split, delete map) need a confirm.
+- Existing items can be selected, dragged and resized with corner handles, and deleted with an x button. This extends the zone drawing code, which already converts pointer positions to robot coordinates.
+
+### Phases
+1. **Verify on the device (still needed).** Replace-versus-append is settled from the source; the rest is untested. Take a map backup, then test whether `vacuum_set_restricted_zone` replaces or appends, what the extra integers mean, and how rotation (this map reports rotation 90) affects coordinates. Use the smallest map or a restore point.
+2. **Restricted zones.** Virtual walls (line tool) and no-go and no-mop zones (rectangle tool): draw, move, resize, delete.
+3. **Room operations.** Merge (select two or more adjacent rooms), split (draw a line across a room), rename.
+4. **Carpets and thresholds.**
+5. **Map management.** Rename, delete, backup and restore, and the temporary-map save / discard / replace flow after a new mapping run.
+
+### Open questions
+- Carpet and threshold services: ids, materials and replace-versus-append (phase 4, deferred).
+- Whether the backup service finishes before the follow-up edit runs.
+- Whether `map_id` needs passing explicitly on multi-floor maps (the room services take an optional `map_id`).
+
+### Not done
+Carpets and thresholds (phase 4), moving/resizing existing zones (they can be deleted and redrawn), furniture, curtains and router position.
+
 ## Order of work
 1. Verify entity discovery and the camera `rooms` attribute on the real device (blocking for both).
 2. Cleaning sequence (smaller, self-contained).
 3. Per-room custom cleaning.
-4. Real-time camera and map editing, if wanted.
+4. Map editor, starting at phase 1 above.
+5. Real-time camera is not feasible with the current integration.

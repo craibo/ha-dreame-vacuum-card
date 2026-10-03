@@ -8,7 +8,7 @@
  * self-cleaning (wash / dry / auto-empty).
  */
 
-const CARD_VERSION = "0.1.3";
+const CARD_VERSION = "0.2.0";
 const DOMAIN = "dreame_vacuum";
 
 // Entities are auto-discovered on the vacuum's device by translation_key.
@@ -86,6 +86,14 @@ ha-card { overflow:hidden; position:relative; padding:0 0 12px; }
 .seqbar { display:flex; gap:12px; padding:6px 16px 0; }
 .seqbar .cta { margin-top:6px; }
 .cta.ghost { background:var(--dv-chip); color:var(--dv-fg); }
+.editbtn { position:absolute; right:10px; top:10px; width:36px; height:36px; border-radius:50%; background:var(--dv-chip); display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:2; }
+.banner { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:6px 12px; padding:8px 12px; border-radius:12px; background:var(--dv-chip); font-size:.9em; }
+.banner button { border:0; background:var(--dv-accent); color:#fff; border-radius:999px; padding:5px 10px; margin-left:4px; font:inherit; font-size:.85em; cursor:pointer; }
+.tools { display:flex; gap:6px; padding:10px 12px 0; overflow-x:auto; }
+.tool { flex:0 0 auto; display:flex; flex-direction:column; align-items:center; font-size:.72em; padding:6px 10px; border-radius:12px; background:var(--dv-chip); cursor:pointer; color:var(--dv-fg); min-width:52px; }
+.tool.on { background:linear-gradient(135deg,var(--dv-accent),var(--dv-accent2)); color:#fff; }
+.tool.off { opacity:.4; pointer-events:none; }
+.cta[disabled] { opacity:.45; cursor:default; }
 .err { padding:16px; color:var(--error-color,#c00); }
 `;
 
@@ -96,6 +104,9 @@ class DreameVacuumCard extends HTMLElement {
     this._mode = "all"; // room | all | zone
     this._selectedRooms = new Set();
     this._zones = [];
+    this._editMode = false; this._tool = "select"; this._draft = null; this._dirty = false; this._editSel = null;
+    this._editRooms = new Set(); this._splitRoom = null; this._splitLine = null; this._backedUp = false;
+    this._cf = null; this._input = null; this._list = null; this._error = null;
     this._img = null; this._mapUrl = null; this._pending = null; this._sig = null; this._card = null; this._camId = undefined;
     this._roomEdit = null; // {id, draft} while the per-room settings sheet is open
     this._repeats = 1; // 1-3; the integration only has per-room cleaning_times selects
@@ -118,6 +129,7 @@ class DreameVacuumCard extends HTMLElement {
     this._hass = hass;
     if (!this._config) return;
     if (this._dragging) return; // don't re-render mid-drag
+    if (this._sheet === "input") return; // don't clobber text being typed
     // HA replaces state objects on change, so reference equality tells us what moved.
     const cam = this._hass.states[this._camera()];
     const others = [this._vac(), ...Object.keys(ENTITY_KEYS).map((k) => this._st(k))];
@@ -309,6 +321,211 @@ class DreameVacuumCard extends HTMLElement {
       <div class="seqbar" style="padding:0"><button class="cta ghost" data-a="rcancel">Cancel</button><button class="cta" data-a="rsave" ${locked ? "disabled style=\"opacity:.5\"" : ""}>Save</button></div>`;
   }
 
+  // ---------- map editor ----------
+  // Writes go through the integration's services. vacuum_set_restricted_zone REPLACES
+  // walls, no-go and no-mop zones together (an omitted list is wiped), so all three are
+  // always sent. Rooms/maps services are single operations.
+  _hasTemp() { return !!this._vac().attributes.has_temporary_map; }
+  _camAttrs() { return this._hass.states[this._camera()]?.attributes || {}; }
+  _curMap() { const a = this._vac().attributes; return (a.maps || []).find((m) => m.id === a.selected_map_id); }
+  _bbox(it) {
+    const xs = [], ys = [];
+    for (const k of Object.keys(it)) { if (/^x\d$/.test(k)) xs.push(it[k]); else if (/^y\d$/.test(k)) ys.push(it[k]); }
+    return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)].map(Math.round);
+  }
+  _enterEdit() {
+    if (this._seqLocked()) return;
+    const a = this._camAttrs();
+    this._draft = {
+      walls: (a.virtual_walls || []).map((w) => [w.x0, w.y0, w.x1, w.y1].map(Math.round)),
+      zones: (a.no_go_areas || []).map((z) => this._bbox(z)),
+      no_mops: (a.no_mopping_areas || []).map((z) => this._bbox(z)),
+    };
+    Object.assign(this, { _editMode: true, _tool: "select", _editSel: null, _dirty: false, _backedUp: false, _mode: "all", _splitRoom: null, _splitLine: null });
+    this._editRooms = new Set();
+    this._render();
+  }
+  _exitEdit() { this._editMode = false; this._draft = null; this._editSel = null; this._editRooms = new Set(); this._splitRoom = null; this._splitLine = null; this._render(); }
+  _setTool(t) { this._tool = t; this._editSel = null; this._editRooms = new Set(); this._splitRoom = null; this._splitLine = null; this._render(); }
+  _finishShape(t, a, b) {
+    const r = Math.round;
+    const stray = Math.hypot(b.x - a.x, b.y - a.y) < 150; // under 15 cm: ignore stray taps
+    if (!stray) {
+      if (t === "wall") { this._draft.walls.push([r(a.x), r(a.y), r(b.x), r(b.y)]); this._dirty = true; }
+      else if (t === "split") this._splitLine = [r(a.x), r(a.y), r(b.x), r(b.y)];
+      else if (Math.abs(b.x - a.x) >= 150 && Math.abs(b.y - a.y) >= 150) {
+        (t === "nogo" ? this._draft.zones : this._draft.no_mops).push([r(Math.min(a.x, b.x)), r(Math.min(a.y, b.y)), r(Math.max(a.x, b.x)), r(Math.max(a.y, b.y))]);
+        this._dirty = true;
+      }
+    }
+    this._render();
+  }
+  _deleteSel() {
+    const sel = this._editSel; if (!sel) return;
+    this._draft[sel.k].splice(sel.i, 1); this._editSel = null; this._dirty = true; this._render();
+  }
+  _editRoomTap(id) {
+    const t = this._tool;
+    if (t === "merge") { this._editRooms.has(id) ? this._editRooms.delete(id) : this._editRooms.add(id); this._render(); }
+    else if (t === "split") { this._splitRoom = id; this._splitLine = null; this._render(); }
+    else if (t === "rename") {
+      const room = this._rooms().find((x) => x.id === id);
+      this._input = { title: "Rename room", value: room?.name || "", run: (v) => this._call(DOMAIN, "vacuum_rename_segment", { segment_id: id, segment_name: v }, this._config.entity) };
+      this._sheet = "input"; this._render();
+    }
+  }
+  _toolbarAction() {
+    const t = this._tool, eid = this._config.entity;
+    if (t === "merge" && this._editRooms.size >= 2) {
+      const ids = [...this._editRooms];
+      this._confirm({ title: `Merge ${ids.length} rooms?`, body: "The rooms become one room. This can't be undone exactly.", verb: "Merge", backup: true,
+        run: async () => { await this._call(DOMAIN, "vacuum_merge_segments", { segments: ids, map_id: this._vac().attributes.selected_map_id }, eid); this._editRooms = new Set(); } });
+    } else if (t === "split" && this._splitRoom && this._splitLine) {
+      const seg = this._splitRoom, line = this._splitLine;
+      this._confirm({ title: "Split this room?", body: "The room is divided along the line you drew.", verb: "Split", backup: true,
+        run: async () => { await this._call(DOMAIN, "vacuum_split_segments", { segment: seg, line, map_id: this._vac().attributes.selected_map_id }, eid); this._splitRoom = null; this._splitLine = null; } });
+    } else if (this._dirty && !["merge", "split", "rename"].includes(t)) {
+      const d = this._draft;
+      this._confirm({ title: "Apply map changes?", body: "Replaces this map's virtual walls, no-go zones and no-mop zones.", verb: "Apply", backup: true,
+        run: async () => { await this._call(DOMAIN, "vacuum_set_restricted_zone", { walls: d.walls, zones: d.zones, no_mops: d.no_mops }, eid); this._exitEditSilently(); } });
+    }
+  }
+  _exitEditSilently() { this._editMode = false; this._draft = null; this._editSel = null; }
+  _editBar() {
+    const t = this._tool, locked = this._seqLocked(), temp = this._hasTemp();
+    const tools = [["select", "Select", "mdi:cursor-default"], ["wall", "Wall", "mdi:vector-line"], ["nogo", "No-Go", "mdi:cancel"], ["nomop", "No-Mop", "mdi:water-off"], ["merge", "Merge", "mdi:call-merge"], ["split", "Split", "mdi:call-split"], ["rename", "Rename", "mdi:rename-box-outline"]];
+    const hint = {
+      select: "Tap a wall or zone to select it, then Delete.", wall: "Drag to draw a virtual wall.", nogo: "Drag to draw a no-go zone.", nomop: "Drag to draw a no-mop zone.",
+      merge: "Tap two or more neighbouring rooms.", split: this._splitRoom ? "Now drag a line across the room." : "Tap the room to split.", rename: "Tap a room to rename it.",
+    }[t];
+    let action = "";
+    if (t === "merge") action = `<button class="cta" data-a="eapply" ${this._editRooms.size >= 2 && !locked ? "" : "disabled"}>Merge${this._editRooms.size ? ` (${this._editRooms.size})` : ""}</button>`;
+    else if (t === "split") action = `<button class="cta" data-a="eapply" ${this._splitRoom && this._splitLine && !locked ? "" : "disabled"}>Split</button>`;
+    else if (t !== "rename") action = `<button class="cta" data-a="eapply" ${this._dirty && !locked ? "" : "disabled"}>Apply</button>`;
+    return `<div class="tools">${tools.map(([k, l, i]) => {
+        const off = temp && ["merge", "split", "rename"].includes(k);
+        return `<div class="tool ${t === k ? "on" : ""} ${off ? "off" : ""}" data-tool="${k}"><ha-icon icon="${i}"></ha-icon>${l}</div>`;
+      }).join("")}</div>
+      <div class="desc" style="text-align:center;margin:6px 16px 0">${locked ? "Robot is running — editing is disabled." : temp && ["merge", "split", "rename"].includes(t) ? "Save or discard the new map first." : hint}</div>
+      <div class="seqbar"><button class="cta ghost" data-a="eexit">Cancel</button>${this._editSel ? `<button class="cta ghost" data-a="edelete">Delete</button>` : ""}${action}</div>`;
+  }
+  _editSvg(cal, w, fs) {
+    const sw = w / 200, rc = (z) => { const a = cal.toImg(z[0], z[1]), b = cal.toImg(z[2], z[3]); return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) }; };
+    const pick = this._tool === "select" ? "pointer-events:auto;cursor:pointer" : "pointer-events:none";
+    const sel = (k, i) => this._editSel && this._editSel.k === k && this._editSel.i === i;
+    let o = "";
+    const rect = (k, list, fill, stroke) => list.forEach((z, i) => {
+      const r = rc(z);
+      o += `<rect data-ek="${k}" data-ei="${i}" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="${fill}" stroke="${sel(k, i) ? "#ffd400" : stroke}" stroke-width="${sel(k, i) ? sw * 2 : sw}" stroke-dasharray="${w / 80}" style="${pick}"/>`;
+    });
+    rect("no_mops", this._draft.no_mops, "#2f80ed33", "#2f80ed");
+    rect("zones", this._draft.zones, "#e5393555", "#e53935");
+    this._draft.walls.forEach((l, i) => {
+      const a = cal.toImg(l[0], l[1]), b = cal.toImg(l[2], l[3]);
+      o += `<g data-ek="walls" data-ei="${i}" style="${pick}"><line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="transparent" stroke-width="${w / 30}"/><line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${sel("walls", i) ? "#ffd400" : "#e53935"}" stroke-width="${sel("walls", i) ? sw * 2.5 : sw * 1.6}" stroke-linecap="round"/></g>`;
+    });
+    if (["merge", "split", "rename"].includes(this._tool)) {
+      this._rooms().forEach((r, i) => {
+        const c = cal.toImg((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
+        const on = this._editRooms.has(r.id) || this._splitRoom === r.id;
+        o += `<g data-er="${r.id}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${on ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="0.92"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${on ? "#fff" : "#345"}">${r.name}</text></g>`;
+      });
+    }
+    if (this._splitLine) {
+      const a = cal.toImg(this._splitLine[0], this._splitLine[1]), b = cal.toImg(this._splitLine[2], this._splitLine[3]);
+      o += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#3d6bff" stroke-width="${sw * 2}" stroke-dasharray="${w / 60}" style="pointer-events:none"/>`;
+    }
+    return o;
+  }
+  _bindEditDrawing(svg, cal, size) {
+    const t = this._tool;
+    if (!["wall", "nogo", "nomop", "split"].includes(t)) return;
+    const NS = "http://www.w3.org/2000/svg", line = t === "wall" || t === "split";
+    const pt = (ev) => { const r = svg.getBoundingClientRect(); return { x: ((ev.clientX - r.left) / r.width) * size.w, y: ((ev.clientY - r.top) / r.height) * size.h }; };
+    let start = null;
+    svg.addEventListener("pointerdown", (ev) => { if (ev.target.closest?.("[data-er]")) return; start = pt(ev); this._dragging = true; svg.setPointerCapture(ev.pointerId); });
+    svg.addEventListener("pointermove", (ev) => {
+      if (!start) return;
+      const p = pt(ev);
+      let el = svg.querySelector(".draft");
+      if (!el) { el = document.createElementNS(NS, line ? "line" : "rect"); el.setAttribute("class", "draft"); el.setAttribute("stroke", t === "nomop" ? "#2f80ed" : t === "split" ? "#3d6bff" : "#e53935"); el.setAttribute("fill", line ? "none" : "#ffffff33"); el.setAttribute("stroke-width", size.w / 200); svg.appendChild(el); }
+      if (line) { el.setAttribute("x1", start.x); el.setAttribute("y1", start.y); el.setAttribute("x2", p.x); el.setAttribute("y2", p.y); }
+      else { el.setAttribute("x", Math.min(start.x, p.x)); el.setAttribute("y", Math.min(start.y, p.y)); el.setAttribute("width", Math.abs(p.x - start.x)); el.setAttribute("height", Math.abs(p.y - start.y)); }
+    });
+    svg.addEventListener("pointerup", (ev) => {
+      if (!start) return;
+      const s = start, p = pt(ev); start = null; this._dragging = false;
+      this._finishShape(t, cal.toVac(s.x, s.y), cal.toVac(p.x, p.y));
+    });
+    svg.addEventListener("pointercancel", () => { start = null; this._dragging = false; });
+  }
+
+  // ---------- confirm / input / list sheets, error handling ----------
+  _confirm(c) { this._cf = c; this._sheet = "confirm"; this._render(); }
+  async _try(fn) {
+    try { await fn(); this._error = null; }
+    catch (e) { this._error = e?.message || String(e); }
+    this._sheet = null; this._cf = null; this._input = null; this._list = null;
+    this._render();
+  }
+  _backup() { return this._call(DOMAIN, "vacuum_backup_map", { map_id: this._vac().attributes.selected_map_id }, this._config.entity); }
+  _confirmSheet() {
+    const c = this._cf; if (!c) return "";
+    const verb = c.verb || "Continue", rec = c.backup && !this._backedUp;
+    return `<h4 style="margin:0 0 6px;font-size:1.2em">${c.title}</h4><div class="desc">${c.body || ""}</div>
+      ${rec ? `<div class="desc" style="margin-top:8px">Backing up the map first is recommended.</div>` : ""}
+      <div class="seqbar" style="padding:0;flex-direction:column">
+        ${rec ? `<button class="cta" data-cf="backup">Back up &amp; ${verb.toLowerCase()}</button><button class="cta ghost" data-cf="go">${verb} without backup</button>` : `<button class="cta" data-cf="go">${verb}</button>`}
+        <button class="cta ghost" data-cf="cancel">Cancel</button></div>`;
+  }
+  _inputSheet() {
+    const i = this._input; if (!i) return "";
+    return `<h4 style="margin:0 0 10px;font-size:1.2em">${i.title}</h4>
+      <input data-inp value="${String(i.value).replace(/"/g, "&quot;")}" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--divider-color,#0003);background:var(--dv-chip);color:var(--dv-fg);font:inherit;box-sizing:border-box">
+      <div class="seqbar" style="padding:0"><button class="cta ghost" data-in="cancel">Cancel</button><button class="cta" data-in="save">Save</button></div>`;
+  }
+  _listSheet() {
+    const l = this._list; if (!l) return "";
+    return `<h4 style="margin:0 0 8px;font-size:1.2em">${l.title}</h4>${l.items.map((it, n) => `<div class="row" data-li="${n}" style="cursor:pointer"><span>${it.label}</span><ha-icon icon="mdi:chevron-right"></ha-icon></div>`).join("")}`;
+  }
+  _sheetBody(hasCustom) {
+    switch (this._sheet) {
+      case "mode": return this._modeSheet(hasCustom);
+      case "room": return this._roomEdit ? this._roomSheet() : "";
+      case "maps": return this._mapsSheet();
+      case "confirm": return this._confirmSheet();
+      case "input": return this._inputSheet();
+      case "list": return this._listSheet();
+      default: return this._cleanSheet();
+    }
+  }
+  _mapAction(kind) {
+    const info = this._curMap(); if (!info) return;
+    const eid = this._config.entity, nm = (info.custom_name || info.name || "").replace(/_/g, " ");
+    if (kind === "rename") {
+      this._input = { title: "Rename map", value: info.custom_name || info.name, run: (v) => this._call(DOMAIN, "vacuum_rename_map", { map_id: info.id, map_name: v }, eid) };
+      this._sheet = "input"; this._render();
+    } else if (kind === "backup") {
+      this._confirm({ title: `Back up ${nm}?`, body: "Saves a recovery copy of this map on the robot.", verb: "Back up", run: () => this._backup() });
+    } else if (kind === "restore") {
+      const items = (info.recovery_map || []).map((label) => ({ label, idx: Number((label.match(/Map(\d+)/) || [])[1]) })).filter((x) => x.idx);
+      this._list = { title: "Restore from…", items: items.map((x) => ({ label: x.label, run: () => this._confirm({ title: "Restore this map?", body: `Replaces ${nm} with: ${x.label}`, verb: "Restore", backup: true, run: () => this._call(DOMAIN, "vacuum_restore_map", { recovery_map_index: x.idx, map_id: info.id }, eid) }) })) };
+      this._sheet = "list"; this._render();
+    } else if (kind === "delete") {
+      this._confirm({ title: `Delete ${nm}?`, body: "This removes the map from the robot.", verb: "Delete", backup: true, run: () => this._call(DOMAIN, "vacuum_delete_map", { map_id: info.id }, eid) });
+    }
+  }
+  _tempAction(kind) {
+    const eid = this._config.entity;
+    if (kind === "save") this._confirm({ title: "Save the new map?", body: "Adds it as a saved map.", verb: "Save", run: () => this._call(DOMAIN, "vacuum_save_temporary_map", {}, eid) });
+    else if (kind === "discard") this._confirm({ title: "Discard the new map?", body: "The new map is deleted.", verb: "Discard", run: () => this._call(DOMAIN, "vacuum_discard_temporary_map", {}, eid) });
+    else {
+      const maps = this._vac().attributes.maps || [];
+      this._list = { title: "Replace which map?", items: maps.map((m) => ({ label: (m.custom_name || m.name).replace(/_/g, " "), run: () => this._confirm({ title: "Replace this map?", body: "The saved map is overwritten by the new one.", verb: "Replace", run: () => this._call(DOMAIN, "vacuum_replace_temporary_map", { map_id: m.id }, eid) }) })) };
+      this._sheet = "list"; this._render();
+    }
+  }
+
   // ---------- zone drawing ----------
   _bindZoneDrawing(wrap, svg, cal, size) {
     const pt = (ev) => {
@@ -317,7 +534,7 @@ class DreameVacuumCard extends HTMLElement {
     };
     let start = null;
     svg.addEventListener("pointerdown", (ev) => {
-      if (this._mode !== "zone" || this._seqEdit) return;
+      if (this._mode !== "zone" || this._seqEdit || this._editMode) return;
       start = pt(ev); this._dragging = true; svg.setPointerCapture(ev.pointerId);
     });
     svg.addEventListener("pointermove", (ev) => {
@@ -362,7 +579,10 @@ class DreameVacuumCard extends HTMLElement {
     const style = document.createElement("style"); style.textContent = CSS;
     const card = document.createElement("ha-card");
     card.innerHTML = `
+      ${!this._editMode && !this._seqEdit && cam ? `<div class="editbtn" data-a="edit" title="Edit map"><ha-icon icon="mdi:pencil-outline"></ha-icon></div>` : ""}
+      ${this._error ? `<div class="err" data-a="clearerr" style="cursor:pointer">${this._error}</div>` : ""}
       ${this._config.show_name ? `<div class="hdr"><div class="name">${name}</div><div class="state">${stateTxt}</div></div>` : ""}
+      ${this._hasTemp() ? `<div class="banner">New map ready <span><button data-a="tmpsave">Save</button><button data-a="tmpreplace">Replace</button><button data-a="tmpdiscard">Discard</button></span></div>` : ""}
       <div class="stats">
         <div class="stat"><b>${area}</b><small>m²</small><div>Cleaning Area</div></div>
         <div class="stat"><b>${time}</b><small>min</small><div>Runtime</div></div>
@@ -381,7 +601,7 @@ class DreameVacuumCard extends HTMLElement {
           ${this._mode !== "all" ? `<div class="leftbtn" data-a="times"><div class="ic">x${this._repeats}</div>Cleaning Times</div>` : ""}
         </div>
       </div>
-      ${this._seqEdit ? `
+      ${this._editMode ? this._editBar() : this._seqEdit ? `
       <div class="desc" style="text-align:center;margin:10px 16px 0">Tap rooms in the order you want them cleaned.</div>
       <div class="seqbar"><button class="cta ghost" data-a="seqreset">Reset</button><button class="cta" data-a="seqdone">Done${this._sequence.length ? ` (${this._sequence.length})` : ""}</button></div>` : `
       <div class="seg">${["room", "all", "zone"].map((m) => `<button data-m="${m}" class="${this._mode === m ? "on" : ""}">${m[0].toUpperCase() + m.slice(1)}</button>`).join("")}</div>
@@ -390,7 +610,7 @@ class DreameVacuumCard extends HTMLElement {
         <button class="go" data-a="go"><ha-icon icon="mdi:${cleaning ? "pause" : "play"}"></ha-icon></button>
         <div class="item" data-a="dock"><ha-icon icon="mdi:${vac.state === "docked" ? "lightning-bolt" : "home-import-outline"}"></ha-icon>${vac.state === "docked" ? stateTxt : "Return to dock"}</div>
       </div>`}
-      ${this._sheet ? `<div class="sheet-bg" data-a="closesheet"><div class="sheet" data-stop="1">${this._sheet === "mode" ? this._modeSheet(hasCustom) : this._sheet === "room" && this._roomEdit ? this._roomSheet() : this._sheet === "maps" ? this._mapsSheet() : this._cleanSheet()}</div></div>` : ""}
+      ${this._sheet ? `<div class="sheet-bg" data-a="closesheet"><div class="sheet" data-stop="1">${this._sheetBody(hasCustom)}</div></div>` : ""}
     `;
     if (pic) { this._ensureImg(pic); card.querySelector("img[data-map]").replaceWith(this._img); }
     this._card = card;
@@ -439,7 +659,9 @@ class DreameVacuumCard extends HTMLElement {
     const label = (o) => o.replace(/_/g, " ");
     return `<h4 style="margin:0 0 8px;font-size:1.2em">Select Map</h4>
       ${locked ? `<div class="desc" style="color:var(--error-color,#c00)">Can't switch maps while the robot is running.</div>` : ""}
-      ${(s.attributes.options || []).map((o) => `<div class="row" data-map="${o}" style="cursor:pointer;${locked ? "opacity:.5;pointer-events:none" : ""}"><span>${label(o)}</span>${o === s.state ? `<ha-icon icon="mdi:check" style="color:var(--dv-accent)"></ha-icon>` : ""}</div>`).join("")}`;
+      ${(s.attributes.options || []).map((o) => `<div class="row" data-map="${o}" style="cursor:pointer;${locked ? "opacity:.5;pointer-events:none" : ""}"><span>${label(o)}</span>${o === s.state ? `<ha-icon icon="mdi:check" style="color:var(--dv-accent)"></ha-icon>` : ""}</div>`).join("")}
+      <h4 style="margin:18px 0 6px">Manage this map</h4>
+      <div class="opts" style="${locked ? "opacity:.5;pointer-events:none" : ""}"><button data-mm="rename">Rename</button><button data-mm="backup">Back up</button><button data-mm="restore">Restore</button><button data-mm="delete" style="color:var(--error-color,#c00)">Delete</button></div>`;
   }
   _areaRow() {
     const n = this._st("self_clean_area");
@@ -483,7 +705,9 @@ class DreameVacuumCard extends HTMLElement {
       const fs = w / 28;
       let out = "";
       const custom = this._st("customized_cleaning")?.state === "on";
-      if (this._seqEdit) {
+      if (this._editMode) {
+        out += this._editSvg(cal, w, fs);
+      } else if (this._seqEdit) {
         this._rooms().forEach((r, i) => {
           const c = cal.toImg((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
           const n = this._sequence.indexOf(r.id) + 1;
@@ -496,7 +720,7 @@ class DreameVacuumCard extends HTMLElement {
           out += `<g data-room="${r.id}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${on ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="${on ? 0.95 : 0.8}"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${on ? "#fff" : "#345"}">${r.name ?? r.id}</text>${custom ? `<text x="${c.x}" y="${c.y + fs * 1.9}" text-anchor="middle" font-size="${fs * 0.75}" fill="#345">${["Quiet", "Std", "Strong", "Turbo"][r.suction_level] ?? ""} · x${r.cleaning_times ?? 1}</text>` : ""}</g>`;
         });
       }
-      for (const z of this._zones) {
+      for (const z of (this._editMode ? [] : this._zones)) {
         const a = cal.toImg(z[0], z[1]), b = cal.toImg(z[2], z[3]);
         out += `<rect x="${Math.min(a.x, b.x)}" y="${Math.min(a.y, b.y)}" width="${Math.abs(b.x - a.x)}" height="${Math.abs(b.y - a.y)}" fill="#3d6bff33" stroke="#3d6bff" stroke-width="${w / 200}" stroke-dasharray="${w / 60}"/>`;
       }
@@ -517,8 +741,14 @@ class DreameVacuumCard extends HTMLElement {
         this._render();
       }));
       svg.querySelectorAll("[data-seq]").forEach((g) => g.addEventListener("click", () => this._toggleSequenceRoom(Number(g.dataset.seq))));
-      svg.style.pointerEvents = this._mode === "all" && !this._seqEdit ? "none" : "auto";
-      this._bindZoneDrawing(card, svg, cal, { w, h });
+      svg.style.pointerEvents = this._mode === "all" && !this._seqEdit && !this._editMode ? "none" : "auto";
+      if (this._editMode) {
+        svg.querySelectorAll("[data-ek]").forEach((el) => el.addEventListener("click", (ev) => {
+          ev.stopPropagation(); this._editSel = { k: el.dataset.ek, i: Number(el.dataset.ei) }; this._render();
+        }));
+        svg.querySelectorAll("[data-er]").forEach((g) => g.addEventListener("click", () => this._editRoomTap(Number(g.dataset.er))));
+        this._bindEditDrawing(svg, cal, { w, h });
+      } else this._bindZoneDrawing(card, svg, cal, { w, h });
     };
     img.complete ? draw() : img.addEventListener("load", draw, { once: true });
   }
@@ -529,6 +759,14 @@ class DreameVacuumCard extends HTMLElement {
       const act = el.dataset.a;
       if (act === "closesheet") { if (ev.target === el) { this._sheet = null; this._render(); } return; }
       if (act === "mode" || act === "clean") { this._sheet = act; this._render(); }
+      else if (act === "edit") this._enterEdit();
+      else if (act === "eexit") this._exitEdit();
+      else if (act === "eapply") this._toolbarAction();
+      else if (act === "edelete") this._deleteSel();
+      else if (act === "clearerr") { this._error = null; this._render(); }
+      else if (act === "tmpsave") this._tempAction("save");
+      else if (act === "tmpdiscard") this._tempAction("discard");
+      else if (act === "tmpreplace") this._tempAction("replace");
       else if (act === "roomsettings") this._openRoom([...this._selectedRooms].pop());
       else if (act === "rsave") this._saveRoom();
       else if (act === "rcancel") { this._roomEdit = null; this._sheet = null; this._render(); }
@@ -540,6 +778,20 @@ class DreameVacuumCard extends HTMLElement {
       else if (act === "clearzones") { this._zones = []; this._render(); }
       else if (act === "times") { this._repeats = (this._repeats % 3) + 1; this._render(); }
       else if (act === "maps") { if (this._st("selected_map")) { this._sheet = "maps"; this._render(); } }
+    }));
+    card.querySelectorAll("[data-tool]").forEach((el) => el.addEventListener("click", () => { if (!el.classList.contains("off")) this._setTool(el.dataset.tool); }));
+    card.querySelectorAll("[data-mm]").forEach((el) => el.addEventListener("click", () => this._mapAction(el.dataset.mm)));
+    card.querySelectorAll("[data-cf]").forEach((el) => el.addEventListener("click", () => {
+      const c = this._cf, k = el.dataset.cf;
+      if (k === "cancel" || !c) { this._cf = null; this._sheet = null; this._render(); return; }
+      this._try(async () => { if (k === "backup") { await this._backup(); this._backedUp = true; } await c.run(); });
+    }));
+    card.querySelectorAll("[data-li]").forEach((el) => el.addEventListener("click", () => this._list?.items[Number(el.dataset.li)]?.run()));
+    card.querySelectorAll("[data-inp]").forEach((el) => el.addEventListener("input", () => { if (this._input) this._input.value = el.value; }));
+    card.querySelectorAll("[data-in]").forEach((el) => el.addEventListener("click", () => {
+      const i = this._input;
+      if (el.dataset.in === "cancel" || !i || !String(i.value).trim()) { this._input = null; this._sheet = null; this._render(); return; }
+      this._try(() => i.run(String(i.value).trim()));
     }));
     card.querySelectorAll("[data-map]").forEach((el) => el.addEventListener("click", () => {
       this._select("selected_map", el.dataset.map); this._sheet = null; this._render();

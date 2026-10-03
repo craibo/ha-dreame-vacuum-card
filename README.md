@@ -19,6 +19,8 @@ A Lovelace card for the [`dreame_vacuum`](https://github.com/Tasshack/dreame-vac
 - Cleaning Mode sheet: mode, suction, mop dampness, customized cleaning
 - Cleaning sequence: Cleaning Mode sheet → Cleaning Sequence, tap rooms in order, Done
 - Per-room custom cleaning: with Customized Cleaning on, long-press a room (or select it and tap Room Settings) to set mode, suction, water, repeats
+- Map editor (pencil button): draw/delete virtual walls, no-go and no-mop zones; merge, split and rename rooms; a backup is offered before changes
+- Map management: rename, back up, restore and delete maps, and save/discard/replace a new map
 - Self-Cleaning sheet: clean mop pad, dry mop pad, auto-empty
 
 ## Install
@@ -49,8 +51,8 @@ Sibling entities (selects, switches, buttons, sensors) are found automatically o
 
 ## Services used
 
-`dreame_vacuum.vacuum_clean_segment` (rooms), `dreame_vacuum.vacuum_clean_zone` (zones), plus the standard `vacuum.start`, `vacuum.pause`, `vacuum.return_to_base`, `select.select_option`, `button.press` and `homeassistant.toggle`.
+`dreame_vacuum.vacuum_clean_segment` (rooms), `dreame_vacuum.vacuum_clean_zone` (zones), the map editor's `vacuum_set_restricted_zone`, `vacuum_merge_segments`, `vacuum_split_segments`, `vacuum_rename_segment`, and the map services `vacuum_rename_map`, `vacuum_backup_map`, `vacuum_restore_map`, `vacuum_delete_map` and the temporary-map services, plus the standard `vacuum.start`, `vacuum.pause`, `vacuum.return_to_base`, `select.select_option`, `button.press` and `homeassistant.toggle`.
 
 ## Not yet implemented
 
-Real-time camera and the map editor. See `PLAN.md`.
+Real-time camera (the integration doesn't expose it), carpets and thresholds editing, and moving/resizing existing zones. See `PLAN.md`.
