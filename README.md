@@ -11,6 +11,13 @@ A Lovelace card for the [`dreame_vacuum`](https://github.com/Tasshack/dreame-vac
 
 ## Install
 
+### HACS (custom repository)
+
+1. HACS → ⋮ → Custom repositories → add `https://github.com/craibo/ha-dreame-vacuum-card`, type **Dashboard**.
+2. Install **Dreame Vacuum Card** and reload the browser.
+
+### Manual
+
 1. Copy `ha-dreame-vacuum-card.js` to `config/www/`.
 2. Add it as a dashboard resource: `/local/ha-dreame-vacuum-card.js` (type: JavaScript module).
 

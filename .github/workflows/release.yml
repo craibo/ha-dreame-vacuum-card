@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag matches CARD_VERSION
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          ver=$(grep -oP 'CARD_VERSION = "\K[^"]+' ha-dreame-vacuum-card.js)
+          if [ "$tag" != "$ver" ]; then
+            echo "Tag $tag does not match CARD_VERSION $ver"; exit 1
+          fi
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" ha-dreame-vacuum-card.js --generate-notes --title "$GITHUB_REF_NAME"
