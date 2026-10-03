@@ -25,7 +25,7 @@ Both features need the map camera's `rooms` attribute (a dict keyed by room id).
 - Whether `order` is 0 or null when unset.
 - Whether the service accepts a partial list on v2.
 
-## 2. Per-room custom cleaning
+## 2. Per-room custom cleaning (implemented, untested on a device)
 
 **Integration surface**
 - Switch `customized_cleaning` turns the mode on. The card already toggles it.

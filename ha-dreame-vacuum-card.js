@@ -96,6 +96,7 @@ class DreameVacuumCard extends HTMLElement {
     this._mode = "all"; // room | all | zone
     this._selectedRooms = new Set();
     this._zones = [];
+    this._roomEdit = null; // {id, draft} while the per-room settings sheet is open
     this._repeats = 1; // 1-3; the integration only has per-room cleaning_times selects
     this._seqEdit = false; // editing the cleaning sequence on the map
     this._sequence = []; // ordered room ids while editing
@@ -225,6 +226,54 @@ class DreameVacuumCard extends HTMLElement {
     this._seqEdit = false; this._render();
   }
 
+  // ---------- per-room custom cleaning ----------
+  // Codes follow the integration: suction 0-3, water 1-3, repeats 1-3, mode 0-2.
+  _openRoom(id) {
+    const r = this._rooms().find((x) => x.id === id);
+    if (!r) return;
+    this._roomEdit = { id, draft: {
+      cleaning_mode: r.cleaning_mode, suction_level: r.suction_level ?? 1, water_volume: r.water_volume ?? 1,
+      cleaning_times: r.cleaning_times ?? 1, mop_temperature: r.mop_temperature, mop_pressure: r.mop_pressure,
+    } };
+    this._sheet = "room"; this._render();
+  }
+  async _saveRoom() {
+    const { id, draft } = this._roomEdit;
+    // The service takes parallel arrays; send every room so none are reset.
+    const rooms = this._rooms().map((r) => (r.id === id ? { ...r, ...draft } : r));
+    const col = (k, dflt) => rooms.map((r) => r[k] ?? dflt);
+    const data = {
+      segment_id: rooms.map((r) => r.id),
+      suction_level: col("suction_level", 1),
+      water_volume: col("water_volume", 1),
+      repeats: col("cleaning_times", 1),
+    };
+    for (const [k, svc] of [["cleaning_mode", "cleaning_mode"], ["mop_temperature", "mop_temperature"], ["mop_pressure", "mop_pressure"]]) {
+      if (rooms.every((r) => r[k] !== undefined && r[k] !== null)) data[svc] = rooms.map((r) => r[k]);
+    }
+    await this._call(DOMAIN, "vacuum_set_custom_cleaning", data, this._config.entity);
+    this._roomEdit = null; this._sheet = null; this._render();
+  }
+  _roomSheet() {
+    const { id, draft } = this._roomEdit;
+    const r = this._rooms().find((x) => x.id === id) || {};
+    const locked = this._seqLocked();
+    const humidity = !!this._find("mop_pad_humidity");
+    const row = (title, field, opts) => `<h4>${title}</h4><div class="opts">${opts.map(([v, l]) => `<button data-rd="${field}" data-v="${v}" class="${String(draft[field]) === String(v) ? "on" : ""}">${l}</button>`).join("")}</div>`;
+    const sweepOnly = draft.cleaning_mode === 0;
+    const mopOnly = draft.cleaning_mode === 1;
+    return `<h4 style="margin:0 0 4px;font-size:1.2em">${r.name || "Room"}</h4>
+      <div class="desc">${this._st("customized_cleaning")?.state === "on" ? "Settings used whenever this room is cleaned." : "Turn on Customized Cleaning in Cleaning Mode for these to apply."}</div>
+      ${locked ? `<div class="desc" style="color:var(--error-color,#c00)">Can't be changed while the robot is running.</div>` : ""}
+      ${draft.cleaning_mode !== undefined && draft.cleaning_mode !== null ? row("Cleaning Mode", "cleaning_mode", [[0, "Sweeping"], [1, "Mopping"], [2, "Sweep & Mop"]]) : ""}
+      ${mopOnly ? "" : row("Suction", "suction_level", [[0, "Quiet"], [1, "Standard"], [2, "Strong"], [3, "Turbo"]])}
+      ${sweepOnly ? "" : row(humidity ? "Mop Pad Humidity" : "Water Volume", "water_volume", humidity ? [[1, "Slightly dry"], [2, "Moist"], [3, "Wet"]] : [[1, "Low"], [2, "Medium"], [3, "High"]])}
+      ${row("Cleaning Times", "cleaning_times", [[1, "x1"], [2, "x2"], [3, "x3"]])}
+      ${draft.mop_temperature !== undefined && draft.mop_temperature !== null ? row("Mop Temperature", "mop_temperature", [[0, "Normal"], [1, "Warm"]]) : ""}
+      ${draft.mop_pressure !== undefined && draft.mop_pressure !== null ? row("Mop Pressure", "mop_pressure", [[0, "Light"], [2, "Normal"]]) : ""}
+      <div class="seqbar" style="padding:0"><button class="cta ghost" data-a="rcancel">Cancel</button><button class="cta" data-a="rsave" ${locked ? "disabled style=\"opacity:.5\"" : ""}>Save</button></div>`;
+  }
+
   // ---------- zone drawing ----------
   _bindZoneDrawing(wrap, svg, cal, size) {
     const pt = (ev) => {
@@ -292,6 +341,7 @@ class DreameVacuumCard extends HTMLElement {
           <div class="sidebtn" data-a="clean"><div class="ic"><ha-icon icon="mdi:rotate-3d-variant"></ha-icon></div>Self-Cleaning Settings</div>
         </div>
         <div class="left">
+          ${this._mode === "room" && hasCustom && this._selectedRooms.size ? `<div class="leftbtn" data-a="roomsettings"><div class="ic"><ha-icon icon="mdi:cog-outline"></ha-icon></div>Room Settings</div>` : ""}
           ${this._mode === "zone" ? `<div class="leftbtn" data-a="clearzones"><div class="ic"><ha-icon icon="mdi:vector-square-remove"></ha-icon></div>Clear Zones</div>` : ""}
           ${this._mode !== "all" ? `<div class="leftbtn" data-a="times"><div class="ic">x${this._repeats}</div>Cleaning Times</div>` : ""}
         </div>
@@ -305,7 +355,7 @@ class DreameVacuumCard extends HTMLElement {
         <button class="go" data-a="go"><ha-icon icon="mdi:${cleaning ? "pause" : "play"}"></ha-icon></button>
         <div class="item" data-a="dock"><ha-icon icon="mdi:${vac.state === "docked" ? "lightning-bolt" : "home-import-outline"}"></ha-icon>${vac.state === "docked" ? stateTxt : "Return to dock"}</div>
       </div>`}
-      ${this._sheet ? `<div class="sheet-bg" data-a="closesheet"><div class="sheet" data-stop="1">${this._sheet === "mode" ? this._modeSheet(hasCustom) : this._cleanSheet()}</div></div>` : ""}
+      ${this._sheet ? `<div class="sheet-bg" data-a="closesheet"><div class="sheet" data-stop="1">${this._sheet === "mode" ? this._modeSheet(hasCustom) : this._sheet === "room" && this._roomEdit ? this._roomSheet() : this._cleanSheet()}</div></div>` : ""}
     `;
     root.replaceChildren(style, card);
     this._drawOverlay(card);
@@ -384,6 +434,7 @@ class DreameVacuumCard extends HTMLElement {
       svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
       const fs = w / 28;
       let out = "";
+      const custom = this._st("customized_cleaning")?.state === "on";
       if (this._seqEdit) {
         this._rooms().forEach((r, i) => {
           const c = cal.toImg((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
@@ -394,7 +445,7 @@ class DreameVacuumCard extends HTMLElement {
         this._rooms().forEach((r, i) => {
           const c = cal.toImg((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
           const on = this._selectedRooms.has(r.id);
-          out += `<g data-room="${r.id}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${on ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="${on ? 0.95 : 0.8}"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${on ? "#fff" : "#345"}">${r.name ?? r.id}</text></g>`;
+          out += `<g data-room="${r.id}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${on ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="${on ? 0.95 : 0.8}"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${on ? "#fff" : "#345"}">${r.name ?? r.id}</text>${custom ? `<text x="${c.x}" y="${c.y + fs * 1.9}" text-anchor="middle" font-size="${fs * 0.75}" fill="#345">${["Quiet", "Std", "Strong", "Turbo"][r.suction_level] ?? ""} · x${r.cleaning_times ?? 1}</text>` : ""}</g>`;
         });
       }
       for (const z of this._zones) {
@@ -402,7 +453,17 @@ class DreameVacuumCard extends HTMLElement {
         out += `<rect x="${Math.min(a.x, b.x)}" y="${Math.min(a.y, b.y)}" width="${Math.abs(b.x - a.x)}" height="${Math.abs(b.y - a.y)}" fill="#3d6bff33" stroke="#3d6bff" stroke-width="${w / 200}" stroke-dasharray="${w / 60}"/>`;
       }
       svg.innerHTML = out;
+      svg.querySelectorAll("[data-room]").forEach((g) => {
+        // long-press a room (customized cleaning on) to edit its settings
+        let t = null;
+        g.addEventListener("pointerdown", () => {
+          if (!custom) return;
+          t = setTimeout(() => { t = null; this._lp = true; this._openRoom(Number(g.dataset.room)); }, 500);
+        });
+        for (const ev of ["pointerup", "pointerleave", "pointercancel"]) g.addEventListener(ev, () => { if (t) { clearTimeout(t); t = null; } });
+      });
       svg.querySelectorAll("[data-room]").forEach((g) => g.addEventListener("click", () => {
+        if (this._lp) { this._lp = false; return; }
         const id = Number(g.dataset.room);
         this._selectedRooms.has(id) ? this._selectedRooms.delete(id) : this._selectedRooms.add(id);
         this._render();
@@ -420,6 +481,9 @@ class DreameVacuumCard extends HTMLElement {
       const act = el.dataset.a;
       if (act === "closesheet") { if (ev.target === el) { this._sheet = null; this._render(); } return; }
       if (act === "mode" || act === "clean") { this._sheet = act; this._render(); }
+      else if (act === "roomsettings") this._openRoom([...this._selectedRooms].pop());
+      else if (act === "rsave") this._saveRoom();
+      else if (act === "rcancel") { this._roomEdit = null; this._sheet = null; this._render(); }
       else if (act === "seqedit") this._enterSequence();
       else if (act === "seqreset") { this._sequence = []; this._render(); }
       else if (act === "seqdone") this._saveSequence();
@@ -431,6 +495,10 @@ class DreameVacuumCard extends HTMLElement {
         const sel = this._hass.states[this._find("selected_map")];
         if (sel) { const o = sel.attributes.options || []; this._hass.callService("select", "select_option", { entity_id: sel.entity_id, option: o[(o.indexOf(sel.state) + 1) % o.length] }); }
       }
+    }));
+    card.querySelectorAll("[data-rd]").forEach((el) => el.addEventListener("click", () => {
+      if (!this._roomEdit) return;
+      this._roomEdit.draft[el.dataset.rd] = Number(el.dataset.v); this._render();
     }));
     card.querySelectorAll("[data-sel]").forEach((el) => el.addEventListener("click", () => this._select(el.dataset.sel, el.dataset.opt)));
     card.querySelectorAll("[data-sw]").forEach((el) => el.addEventListener("change", () => this._toggle(el.dataset.sw)));

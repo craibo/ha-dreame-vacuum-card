@@ -7,6 +7,7 @@ A Lovelace card for the [`dreame_vacuum`](https://github.com/Tasshack/dreame-vac
 - Room / All / Zone modes, cleaning times, start / pause, return to dock
 - Cleaning Mode sheet: mode, suction, mop dampness, customized cleaning
 - Cleaning sequence: Cleaning Mode sheet → Cleaning Sequence, tap rooms in order, Done
+- Per-room custom cleaning: with Customized Cleaning on, long-press a room (or select it and tap Room Settings) to set mode, suction, water, repeats
 - Self-Cleaning sheet: clean mop pad, dry mop pad, auto-empty
 
 ## Install
@@ -41,4 +42,4 @@ Sibling entities (selects, switches, buttons, sensors) are found automatically o
 
 ## Not yet implemented
 
-Real-time camera, per-room custom cleaning, and the map editor. See `PLAN.md`.
+Real-time camera and the map editor. See `PLAN.md`.
