@@ -8,7 +8,7 @@
  * self-cleaning (wash / dry / auto-empty).
  */
 
-const CARD_VERSION = "0.1.2";
+const CARD_VERSION = "0.1.3";
 const DOMAIN = "dreame_vacuum";
 
 // Entities are auto-discovered on the vacuum's device by translation_key.
@@ -96,6 +96,7 @@ class DreameVacuumCard extends HTMLElement {
     this._mode = "all"; // room | all | zone
     this._selectedRooms = new Set();
     this._zones = [];
+    this._img = null; this._mapUrl = null; this._pending = null; this._sig = null; this._card = null; this._camId = undefined;
     this._roomEdit = null; // {id, draft} while the per-room settings sheet is open
     this._repeats = 1; // 1-3; the integration only has per-room cleaning_times selects
     this._seqEdit = false; // editing the cleaning sequence on the map
@@ -117,7 +118,39 @@ class DreameVacuumCard extends HTMLElement {
     this._hass = hass;
     if (!this._config) return;
     if (this._dragging) return; // don't re-render mid-drag
+    // HA replaces state objects on change, so reference equality tells us what moved.
+    const cam = this._hass.states[this._camera()];
+    const others = [this._vac(), ...Object.keys(ENTITY_KEYS).map((k) => this._st(k))];
+    const prev = this._sig;
+    this._sig = { cam, others };
+    if (prev && others.every((o, i) => o === prev.others[i])) {
+      // Only the map camera changed (the common case while cleaning): update the map
+      // in place instead of rebuilding the card, so sheets/sliders/scroll are untouched.
+      if (cam !== prev.cam) this._updateMapOnly(cam);
+      return;
+    }
     this._render();
+  }
+
+  // Keep one <img> for the card's lifetime and swap its source only after the next
+  // frame has loaded, so the old map stays visible until the new one is ready.
+  _ensureImg(url) {
+    if (!this._img) { this._img = new Image(); this._img.src = url; this._mapUrl = url; return; }
+    if (url === this._mapUrl || url === this._pending) return;
+    this._pending = url;
+    const pre = new Image();
+    pre.onload = () => {
+      if (this._pending !== url) return;
+      this._pending = null; this._mapUrl = url; this._img.src = url; this._redrawOverlay();
+    };
+    pre.onerror = () => { if (this._pending === url) this._pending = null; };
+    pre.src = url;
+  }
+  _redrawOverlay() { if (this._card && this._card.isConnected !== false) this._drawOverlay(this._card); }
+  _updateMapOnly(cam) {
+    const pic = cam?.attributes?.entity_picture;
+    if (pic && pic !== this._mapUrl) this._ensureImg(pic); // overlay redraws once the frame loads
+    else this._redrawOverlay(); // same image, but rooms/calibration may have changed
   }
 
   // ---------- entity helpers ----------
@@ -141,10 +174,12 @@ class DreameVacuumCard extends HTMLElement {
   _st(key) { const id = this._find(key); return id ? this._hass.states[id] : null; }
   _camera() {
     if (this._config.camera) return this._config.camera;
+    if (this._camId) return this._camId;
     const dev = this._hass.entities?.[this._config.entity]?.device_id;
-    return Object.keys(this._hass.entities || {}).find(
+    this._camId = Object.keys(this._hass.entities || {}).find(
       (id) => id.startsWith("camera.") && this._hass.entities[id].device_id === dev && !/map_data|map_\d|history|wifi|obstacle|recovery/.test(id)
     );
+    return this._camId;
   }
   _call(domain, service, data, entity_id) {
     return this._hass.callService(domain, service, { entity_id, ...data });
@@ -334,7 +369,7 @@ class DreameVacuumCard extends HTMLElement {
         <div class="stat"><b>${batt}</b><small>%</small><div>Battery</div></div>
       </div>
       <div class="mapwrap">
-        ${pic ? `<img src="${pic}">` : `<div class="err">No map camera found</div>`}
+        ${pic ? `<img data-map>` : `<div class="err">No map camera found</div>`}
         <svg class="ov"></svg>
         <div class="side">
           <div class="sidebtn" data-a="mode"><div class="ic"><ha-icon icon="mdi:tune-variant"></ha-icon></div>Cleaning Mode</div>
@@ -357,6 +392,8 @@ class DreameVacuumCard extends HTMLElement {
       </div>`}
       ${this._sheet ? `<div class="sheet-bg" data-a="closesheet"><div class="sheet" data-stop="1">${this._sheet === "mode" ? this._modeSheet(hasCustom) : this._sheet === "room" && this._roomEdit ? this._roomSheet() : this._sheet === "maps" ? this._mapsSheet() : this._cleanSheet()}</div></div>` : ""}
     `;
+    if (pic) { this._ensureImg(pic); card.querySelector("img[data-map]").replaceWith(this._img); }
+    this._card = card;
     root.replaceChildren(style, card);
     this._drawOverlay(card);
     this._wire(card);
@@ -433,10 +470,12 @@ class DreameVacuumCard extends HTMLElement {
   }
 
   _drawOverlay(card) {
-    const svg = card.querySelector("svg.ov");
+    let svg = card.querySelector("svg.ov");
     const img = card.querySelector(".mapwrap img");
     const cal = this._calibration();
-    if (!img || !cal) return;
+    if (!svg || !img || !cal) return;
+    // Fresh svg each draw: drops listeners from the previous draw (no duplicate zone handlers).
+    const fresh = svg.cloneNode(false); svg.replaceWith(fresh); svg = fresh;
     const draw = () => {
       const w = img.naturalWidth, h = img.naturalHeight;
       if (!w) return;
