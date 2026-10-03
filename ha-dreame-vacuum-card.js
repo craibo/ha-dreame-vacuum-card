@@ -8,7 +8,7 @@
  * self-cleaning (wash / dry / auto-empty).
  */
 
-const CARD_VERSION = "0.1.1";
+const CARD_VERSION = "0.1.2";
 const DOMAIN = "dreame_vacuum";
 
 // Entities are auto-discovered on the vacuum's device by translation_key.
