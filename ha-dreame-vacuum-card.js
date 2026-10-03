@@ -8,7 +8,7 @@
  * self-cleaning (wash / dry / auto-empty).
  */
 
-const CARD_VERSION = "0.1.0";
+const CARD_VERSION = "0.1.1";
 const DOMAIN = "dreame_vacuum";
 
 // Entities are auto-discovered on the vacuum's device by translation_key.
@@ -355,7 +355,7 @@ class DreameVacuumCard extends HTMLElement {
         <button class="go" data-a="go"><ha-icon icon="mdi:${cleaning ? "pause" : "play"}"></ha-icon></button>
         <div class="item" data-a="dock"><ha-icon icon="mdi:${vac.state === "docked" ? "lightning-bolt" : "home-import-outline"}"></ha-icon>${vac.state === "docked" ? stateTxt : "Return to dock"}</div>
       </div>`}
-      ${this._sheet ? `<div class="sheet-bg" data-a="closesheet"><div class="sheet" data-stop="1">${this._sheet === "mode" ? this._modeSheet(hasCustom) : this._sheet === "room" && this._roomEdit ? this._roomSheet() : this._cleanSheet()}</div></div>` : ""}
+      ${this._sheet ? `<div class="sheet-bg" data-a="closesheet"><div class="sheet" data-stop="1">${this._sheet === "mode" ? this._modeSheet(hasCustom) : this._sheet === "room" && this._roomEdit ? this._roomSheet() : this._sheet === "maps" ? this._mapsSheet() : this._cleanSheet()}</div></div>` : ""}
     `;
     root.replaceChildren(style, card);
     this._drawOverlay(card);
@@ -394,6 +394,15 @@ class DreameVacuumCard extends HTMLElement {
     const s = this._st(key);
     if (!s) return "";
     return `<div class="row"><div><h4 style="margin:0">${title}</h4><div class="desc">${desc}</div></div><ha-switch data-sw="${key}" ${s.state === "on" ? "checked" : ""}></ha-switch></div>`;
+  }
+  _mapsSheet() {
+    const s = this._st("selected_map");
+    if (!s) return "";
+    const locked = this._seqLocked();
+    const label = (o) => o.replace(/_/g, " ");
+    return `<h4 style="margin:0 0 8px;font-size:1.2em">Select Map</h4>
+      ${locked ? `<div class="desc" style="color:var(--error-color,#c00)">Can't switch maps while the robot is running.</div>` : ""}
+      ${(s.attributes.options || []).map((o) => `<div class="row" data-map="${o}" style="cursor:pointer;${locked ? "opacity:.5;pointer-events:none" : ""}"><span>${label(o)}</span>${o === s.state ? `<ha-icon icon="mdi:check" style="color:var(--dv-accent)"></ha-icon>` : ""}</div>`).join("")}`;
   }
   _areaRow() {
     const n = this._st("self_clean_area");
@@ -491,10 +500,10 @@ class DreameVacuumCard extends HTMLElement {
       else if (act === "dock") this._call("vacuum", "return_to_base", {}, this._config.entity);
       else if (act === "clearzones") { this._zones = []; this._render(); }
       else if (act === "times") { this._repeats = (this._repeats % 3) + 1; this._render(); }
-      else if (act === "maps") {
-        const sel = this._hass.states[this._find("selected_map")];
-        if (sel) { const o = sel.attributes.options || []; this._hass.callService("select", "select_option", { entity_id: sel.entity_id, option: o[(o.indexOf(sel.state) + 1) % o.length] }); }
-      }
+      else if (act === "maps") { if (this._st("selected_map")) { this._sheet = "maps"; this._render(); } }
+    }));
+    card.querySelectorAll("[data-map]").forEach((el) => el.addEventListener("click", () => {
+      this._select("selected_map", el.dataset.map); this._sheet = null; this._render();
     }));
     card.querySelectorAll("[data-rd]").forEach((el) => el.addEventListener("click", () => {
       if (!this._roomEdit) return;
