@@ -1,5 +1,9 @@
 # Dreame Vacuum Card
 
+<p align="center"><img src="brand/icon.png" width="96" alt="Dreame Vacuum Card"></p>
+
+<p align="center"><img src="docs/screenshot.png" width="360" alt="Dreame Vacuum Card screenshot"></p>
+
 A Lovelace card for the [`dreame_vacuum`](https://github.com/Tasshack/dreame-vacuum) integration, laid out like the Dreame app. It uses only the integration's public entities, attributes and services, and has no build step.
 
 - Header with state, plus cleaning area, runtime and battery
