@@ -4,6 +4,15 @@
 
 <p align="center"><img src="docs/screenshot.png" width="360" alt="Dreame Vacuum Card screenshot"></p>
 
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/cleaning-mode.png" width="220" alt="Cleaning Mode sheet"><br>Cleaning Mode</td>
+    <td align="center"><img src="docs/self-cleaning.png" width="220" alt="Self-Cleaning sheet"><br>Self-Cleaning</td>
+    <td align="center"><img src="docs/maintenance-consumables.png" width="220" alt="Maintenance sheet, Consumables tab"><br>Maintenance: Consumables</td>
+    <td align="center"><img src="docs/maintenance-base-station.png" width="220" alt="Maintenance sheet, Base Station tab"><br>Maintenance: Base Station</td>
+  </tr>
+</table>
+
 ## Support this project
 
 [![Sponsor me on GitHub](https://img.shields.io/badge/Sponsor-craibo%20on%20GitHub-blue.svg?logo=github)](https://github.com/sponsors/craibo)
