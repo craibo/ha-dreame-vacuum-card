@@ -97,9 +97,58 @@ Not planned: wall and door geometry (`vacuum_set_walls` takes 11 integers per do
 ### Not done
 Carpets and thresholds (phase 4), moving/resizing existing zones (they can be deleted and redrawn), furniture, curtains and router position.
 
+## 4. Maintenance panel (planned)
+
+Shows consumable life, base-station status and the reset buttons in one place, like the app's Consumables page. It uses only sibling entities the integration already creates, so no new services are needed.
+
+### Entities (all found by `translation_key` through `_find`, so add them to `ENTITY_KEYS`)
+
+| Row | Life % | Time left | Reset button |
+|---|---|---|---|
+| Main brush | `main_brush_left` | `main_brush_time_left` | `reset_main_brush` |
+| Side brush | `side_brush_left` | `side_brush_time_left` | `reset_side_brush` |
+| Filter | `filter_left` | `filter_time_left` | `reset_filter` |
+| Mop pad | `mop_pad_left` | `mop_pad_time_left` | `reset_mop_pad` |
+| Sensors | `sensor_dirty_left` | `sensor_dirty_time_left` | `reset_sensor` |
+| Silver ion | `silver_ion_left` | `silver_ion_time_left` | none |
+| Detergent | `detergent_left` | `detergent_time_left` | `reset_detergent` |
+
+Status rows: `dust_collection`, `auto_empty_status`, `self_wash_base_status`, `low_water_warning`, `mop_pad` (installed / not), `error`, plus the `clear_warning` and `water_tank_draining` buttons.
+
+Every row is optional. A row is drawn only when its life sensor exists, which handles models without a base station (no detergent, silver ion or dust rows). The existing fallback `endsWith("_" + tkey)` should resolve all of these; `mop_pad` versus `mop_pad_left` is the one pair to check, since the first must not match the second.
+
+### UX
+1. A third side button, "Maintenance", under Self-Cleaning Settings opens a bottom sheet through the existing `_sheet` / `_sheetBody` path, with a new `_maintSheet()` renderer.
+2. The sheet has two tabs, matching `_cleanSheet`: **Consumables** and **Base Station**.
+3. **Consumables**: one row per part with an icon, name, a progress bar for life %, and "N h left" (or days, from the sensor's `unit_of_measurement`). Bar colour is green above 30%, amber from 10 to 30% and red below 10%. A "Reset" chip on the row asks for confirmation through the existing `_confirm` sheet, then presses the reset button.
+4. **Base Station**: status rows with a state chip, a "Start auto-empty" button (already wired as `btn_auto_empty`), "Drain water tank" and "Clear warning". Buttons whose entity is `unavailable` are disabled, which is the case for the last two at the moment.
+5. A small red dot on the Maintenance button, and a `.banner` under the header ("Filter needs replacing"), appear when any part is at or below the threshold. The banner is dismissible and not shown while editing the map or the sequence.
+
+### Config
+```yaml
+show_maintenance: true          # default true; false hides the button and banner
+maintenance_warn_percent: 10    # red threshold (amber is 3x this)
+```
+
+### Work
+- Add the ENTITY_KEYS above and a `CONSUMABLES` table (key, label, icon, reset key) so rows are data-driven and the sheet is a single `map` over it.
+- Add `_maintSheet()` and `_consumableRow(c)`, a `_tab` value for the two tabs, and `_worst()` for the dot and banner.
+- Add `data-reset="<key>"` handling in `_wire` that calls `_confirm({... , run: () => this._press(key)})`.
+- Add the CSS (progress bar, chips) beside the existing sheet styles, using the `--dv-*` variables so it follows the HA theme.
+- Update README (feature list, config) and bump `CARD_VERSION`.
+
+### Verify on the device
+- The unit of the `*_time_left` sensors (hours or days). The sheet reads it from the attributes, so this only affects labels.
+- That `reset_*` presses change the matching `_left` sensor, and that it refreshes without a reload.
+- Whether `dust_collection` can show a "full" state. If not, the bin row says "Ready" or "Needs emptying" from `available` only, and the card avoids implying a fill level.
+
+### Not planned
+Push notifications (use an HA automation on the `_left` sensors; there is already an error alert), usage history charts, and a maintenance schedule.
+
 ## Order of work
 1. Verify entity discovery and the camera `rooms` attribute on the real device (blocking for both).
 2. Cleaning sequence (smaller, self-contained).
 3. Per-room custom cleaning.
 4. Map editor, starting at phase 1 above.
-5. Real-time camera is not feasible with the current integration.
+5. Maintenance panel (section 4): data-driven consumable rows first, then the Base Station tab, then the dot and banner.
+6. Real-time camera is not feasible with the current integration.

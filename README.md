@@ -21,6 +21,7 @@ A Lovelace card for the [`dreame_vacuum`](https://github.com/Tasshack/dreame-vac
 - Per-room custom cleaning: with Customized Cleaning on, long-press a room (or select it and tap Room Settings) to set mode, suction, water, repeats
 - Map editor (pencil button): draw/delete virtual walls, no-go and no-mop zones; merge, split and rename rooms; a backup is offered before changes
 - Map management: rename, back up, restore and delete maps, and save/discard/replace a new map
+- Maintenance sheet: life remaining and time left for brushes, filter, mop pad, sensors, silver ion and detergent, with a confirmed reset button for each
 - Self-Cleaning sheet: clean mop pad, dry mop pad, auto-empty
 
 ## Install
@@ -43,6 +44,8 @@ entity: vacuum.l10s_ultra
 # optional
 camera: camera.l10s_ultra_map
 name: L10s Ultra
+show_maintenance: true          # false hides the Maintenance button
+maintenance_warn_percent: 10    # red at or below this, amber up to 3x
 entities:            # override auto-discovery of any sibling entity
   suction_level: select.l10s_ultra_suction_level
 ```

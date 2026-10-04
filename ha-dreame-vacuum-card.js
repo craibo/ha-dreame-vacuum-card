@@ -8,8 +8,21 @@
  * self-cleaning (wash / dry / auto-empty).
  */
 
-const CARD_VERSION = "0.2.0";
+const CARD_VERSION = "0.3.0-beta.1";
 const DOMAIN = "dreame_vacuum";
+
+// Consumable parts shown in the maintenance sheet. Each one looks up
+// `<id>_left` (% life) and `<id>_time_left` sensors plus a `reset_<id>` button
+// (or `reset`, when the button is named differently). Rows without a life sensor are hidden.
+const CONSUMABLES = [
+  { id: "main_brush", label: "Main brush", icon: "mdi:broom" },
+  { id: "side_brush", label: "Side brush", icon: "mdi:fan" },
+  { id: "filter", label: "Filter", icon: "mdi:air-filter" },
+  { id: "mop_pad", label: "Mop pad", icon: "mdi:water-outline" },
+  { id: "sensor_dirty", label: "Sensors", icon: "mdi:eye-outline", reset: "reset_sensor" },
+  { id: "silver_ion", label: "Silver ion", icon: "mdi:shield-star-outline", reset: null },
+  { id: "detergent", label: "Detergent", icon: "mdi:bottle-tonic-outline" },
+];
 
 // Entities are auto-discovered on the vacuum's device by translation_key.
 // Override any of them via `entities:` in the card config.
@@ -38,6 +51,11 @@ const ENTITY_KEYS = {
   cleaning_time: ["sensor", "cleaning_time"],
   status: ["sensor", "status"],
 };
+for (const c of CONSUMABLES) {
+  ENTITY_KEYS[`${c.id}_left`] = ["sensor", `${c.id}_left`];
+  ENTITY_KEYS[`${c.id}_time_left`] = ["sensor", `${c.id}_time_left`];
+  if (c.reset !== null) ENTITY_KEYS[`reset_${c.id}`] = ["button", c.reset || `reset_${c.id}`];
+}
 
 const ROOM_COLORS = ["#f7df7e", "#a9c7f7", "#b7d98b", "#9ed8f7", "#c9b6f2", "#f7b99a"];
 
@@ -93,6 +111,14 @@ ha-card { overflow:hidden; position:relative; padding:0 0 12px; }
 .tool { flex:0 0 auto; display:flex; flex-direction:column; align-items:center; font-size:.72em; padding:6px 10px; border-radius:12px; background:var(--dv-chip); cursor:pointer; color:var(--dv-fg); min-width:52px; }
 .tool.on { background:linear-gradient(135deg,var(--dv-accent),var(--dv-accent2)); color:#fff; }
 .tool.off { opacity:.4; pointer-events:none; }
+.cons { padding:10px 0; }
+.cons .top { display:flex; align-items:center; gap:10px; }
+.cons .top .nm { flex:1; }
+.cons .top small { color:var(--dv-dim); }
+.prog { height:8px; border-radius:99px; background:var(--dv-chip); overflow:hidden; margin-top:6px; }
+.prog div { height:100%; border-radius:99px; }
+.lvl-ok { background:#43a047; } .lvl-warn { background:#ffa000; } .lvl-low { background:#e53935; }
+.rchip { border:0; border-radius:999px; padding:5px 12px; background:var(--dv-chip); color:var(--dv-fg); font:inherit; font-size:.8em; cursor:pointer; }
 .cta[disabled] { opacity:.45; cursor:default; }
 .err { padding:16px; color:var(--error-color,#c00); }
 `;
@@ -100,7 +126,7 @@ ha-card { overflow:hidden; position:relative; padding:0 0 12px; }
 class DreameVacuumCard extends HTMLElement {
   setConfig(config) {
     if (!config || !config.entity) throw new Error("`entity` (the vacuum entity) is required");
-    this._config = { show_name: true, ...config };
+    this._config = { show_name: true, show_maintenance: true, maintenance_warn_percent: 10, ...config };
     this._mode = "all"; // room | all | zone
     this._selectedRooms = new Set();
     this._zones = [];
@@ -496,6 +522,7 @@ class DreameVacuumCard extends HTMLElement {
       case "confirm": return this._confirmSheet();
       case "input": return this._inputSheet();
       case "list": return this._listSheet();
+      case "maint": return this._maintSheet();
       default: return this._cleanSheet();
     }
   }
@@ -594,6 +621,7 @@ class DreameVacuumCard extends HTMLElement {
         <div class="side">
           <div class="sidebtn" data-a="mode"><div class="ic"><ha-icon icon="mdi:tune-variant"></ha-icon></div>Cleaning Mode</div>
           <div class="sidebtn" data-a="clean"><div class="ic"><ha-icon icon="mdi:rotate-3d-variant"></ha-icon></div>Self-Cleaning Settings</div>
+          ${this._hasMaint() ? `<div class="sidebtn" data-a="maint"><div class="ic"><ha-icon icon="mdi:wrench-outline"></ha-icon></div>Maintenance</div>` : ""}
         </div>
         <div class="left">
           ${this._mode === "room" && hasCustom && this._selectedRooms.size ? `<div class="leftbtn" data-a="roomsettings"><div class="ic"><ha-icon icon="mdi:cog-outline"></ha-icon></div>Room Settings</div>` : ""}
@@ -617,6 +645,27 @@ class DreameVacuumCard extends HTMLElement {
     root.replaceChildren(style, card);
     this._drawOverlay(card);
     this._wire(card);
+  }
+
+  _hasMaint() { return this._config.show_maintenance !== false && CONSUMABLES.some((c) => this._st(`${c.id}_left`)); }
+  _consumableRow(c) {
+    const life = this._st(`${c.id}_left`);
+    if (!life) return "";
+    const pct = Number(life.state), ok = life.state !== "unavailable" && life.state !== "unknown" && Number.isFinite(pct);
+    const warn = this._config.maintenance_warn_percent;
+    const lvl = !ok ? "" : pct <= warn ? "lvl-low" : pct <= warn * 3 ? "lvl-warn" : "lvl-ok";
+    const t = this._st(`${c.id}_time_left`);
+    const left = t && t.state !== "unavailable" && t.state !== "unknown"
+      ? (this._hass.formatEntityState ? this._hass.formatEntityState(t) : `${t.state} ${t.attributes.unit_of_measurement || ""}`.trim()) + " left"
+      : "";
+    const rid = c.reset !== null && this._find(`reset_${c.id}`);
+    const canReset = rid && this._hass.states[rid]?.state !== "unavailable";
+    return `<div class="cons"><div class="top"><ha-icon icon="${c.icon}"></ha-icon><div class="nm">${c.label}<br><small>${left}</small></div>
+      <b>${ok ? Math.round(pct) + "%" : "–"}</b>${canReset ? `<button class="rchip" data-reset="${c.id}">Reset</button>` : ""}</div>
+      <div class="prog"><div class="${lvl}" style="width:${ok ? Math.max(0, Math.min(100, pct)) : 0}%"></div></div></div>`;
+  }
+  _maintSheet() {
+    return `<h4 style="margin:0 0 4px;font-size:1.2em">Maintenance</h4>${CONSUMABLES.map((c) => this._consumableRow(c)).join("")}`;
   }
 
   _optionsRow(key) {
@@ -758,7 +807,7 @@ class DreameVacuumCard extends HTMLElement {
     card.querySelectorAll("[data-a]").forEach((el) => el.addEventListener("click", (ev) => {
       const act = el.dataset.a;
       if (act === "closesheet") { if (ev.target === el) { this._sheet = null; this._render(); } return; }
-      if (act === "mode" || act === "clean") { this._sheet = act; this._render(); }
+      if (act === "mode" || act === "clean" || act === "maint") { this._sheet = act; this._render(); }
       else if (act === "edit") this._enterEdit();
       else if (act === "eexit") this._exitEdit();
       else if (act === "eapply") this._toolbarAction();
@@ -806,6 +855,12 @@ class DreameVacuumCard extends HTMLElement {
     card.querySelectorAll("[data-area]").forEach((el) => el.addEventListener("change", () => {
       const id = this._find("self_clean_area");
       if (id) this._hass.callService("number", "set_value", { entity_id: id, value: Number(el.value) });
+    }));
+    card.querySelectorAll("[data-reset]").forEach((el) => el.addEventListener("click", () => {
+      const c = CONSUMABLES.find((x) => x.id === el.dataset.reset), id = this._find(`reset_${c.id}`);
+      if (!id) return;
+      this._confirm({ title: `Reset ${c.label.toLowerCase()}?`, body: "Only do this after replacing or cleaning the part. It restarts the life counter.", verb: "Reset",
+        run: () => this._hass.callService("button", "press", { entity_id: id }) });
     }));
     card.querySelectorAll("[data-tab]").forEach((el) => el.addEventListener("click", () => { this._tab = el.dataset.tab; this._render(); }));
   }
