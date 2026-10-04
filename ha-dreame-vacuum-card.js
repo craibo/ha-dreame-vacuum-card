@@ -8,7 +8,7 @@
  * self-cleaning (wash / dry / auto-empty).
  */
 
-const CARD_VERSION = "0.3.0-beta.2";
+const CARD_VERSION = "0.3.0";
 const DOMAIN = "dreame_vacuum";
 
 // Consumable parts shown in the maintenance sheet. Each one looks up
