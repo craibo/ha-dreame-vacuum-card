@@ -21,7 +21,7 @@ A Lovelace card for the [`dreame_vacuum`](https://github.com/Tasshack/dreame-vac
 - Per-room custom cleaning: with Customized Cleaning on, long-press a room (or select it and tap Room Settings) to set mode, suction, water, repeats
 - Map editor (pencil button): draw/delete virtual walls, no-go and no-mop zones; merge, split and rename rooms; a backup is offered before changes
 - Map management: rename, back up, restore and delete maps, and save/discard/replace a new map
-- Maintenance sheet: life remaining and time left for brushes, filter, mop pad, sensors, silver ion and detergent, with a confirmed reset button for each
+- Maintenance sheet (a red dot and a dismissible banner flag low parts): life remaining and time left for brushes, filter, mop pad, sensors, silver ion and detergent, with a confirmed reset button for each; a Base Station tab shows dust, auto-empty, wash base, water, mop pad and error status with auto-empty, drain-tank and clear-warning buttons
 - Self-Cleaning sheet: clean mop pad, dry mop pad, auto-empty
 
 ## Install

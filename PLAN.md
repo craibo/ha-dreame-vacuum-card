@@ -97,7 +97,7 @@ Not planned: wall and door geometry (`vacuum_set_walls` takes 11 integers per do
 ### Not done
 Carpets and thresholds (phase 4), moving/resizing existing zones (they can be deleted and redrawn), furniture, curtains and router position.
 
-## 4. Maintenance panel (planned)
+## 4. Maintenance panel (implemented, untested on a device)
 
 Shows consumable life, base-station status and the reset buttons in one place, like the app's Consumables page. It uses only sibling entities the integration already creates, so no new services are needed.
 
@@ -122,7 +122,7 @@ Every row is optional. A row is drawn only when its life sensor exists, which ha
 2. The sheet has two tabs, matching `_cleanSheet`: **Consumables** and **Base Station**.
 3. **Consumables**: one row per part with an icon, name, a progress bar for life %, and "N h left" (or days, from the sensor's `unit_of_measurement`). Bar colour is green above 30%, amber from 10 to 30% and red below 10%. A "Reset" chip on the row asks for confirmation through the existing `_confirm` sheet, then presses the reset button.
 4. **Base Station**: status rows with a state chip, a "Start auto-empty" button (already wired as `btn_auto_empty`), "Drain water tank" and "Clear warning". Buttons whose entity is `unavailable` are disabled, which is the case for the last two at the moment.
-5. A small red dot on the Maintenance button, and a `.banner` under the header ("Filter needs replacing"), appear when any part is at or below the threshold. The banner is dismissible and not shown while editing the map or the sequence.
+5. A small red dot on the Maintenance button, and a `.banner` under the header ("Filter is running low"), appear when any part is at or below the threshold. The banner is dismissible and not shown while editing the map or the sequence.
 
 ### Config
 ```yaml
