@@ -8,8 +8,10 @@
  * self-cleaning (wash / dry / auto-empty).
  */
 
-const CARD_VERSION = "0.3.0";
+const CARD_VERSION = "0.3.1";
 const DOMAIN = "dreame_vacuum";
+// Escape untrusted text (entity states/attributes, map and room names, config) before it goes into innerHTML.
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
 // Consumable parts shown in the maintenance sheet. Each one looks up
 // `<id>_left` (% life) and `<id>_time_left` sensors plus a `reset_<id>` button
@@ -357,7 +359,7 @@ class DreameVacuumCard extends HTMLElement {
     const row = (title, field, opts) => `<h4>${title}</h4><div class="opts">${opts.map(([v, l]) => `<button data-rd="${field}" data-v="${v}" class="${String(draft[field]) === String(v) ? "on" : ""}">${l}</button>`).join("")}</div>`;
     const sweepOnly = draft.cleaning_mode === 0;
     const mopOnly = draft.cleaning_mode === 1;
-    return `<h4 style="margin:0 0 4px;font-size:1.2em">${r.name || "Room"}</h4>
+    return `<h4 style="margin:0 0 4px;font-size:1.2em">${esc(r.name || "Room")}</h4>
       <div class="desc">${this._st("customized_cleaning")?.state === "on" ? "Settings used whenever this room is cleaned." : "Turn on Customized Cleaning in Cleaning Mode for these to apply."}</div>
       ${locked ? `<div class="desc" style="color:var(--error-color,#c00)">Can't be changed while the robot is running.</div>` : ""}
       ${draft.cleaning_mode !== undefined && draft.cleaning_mode !== null ? row("Cleaning Mode", "cleaning_mode", [[0, "Sweeping"], [1, "Mopping"], [2, "Sweep & Mop"]]) : ""}
@@ -476,7 +478,7 @@ class DreameVacuumCard extends HTMLElement {
       this._rooms().forEach((r, i) => {
         const c = cal.toImg((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
         const on = this._editRooms.has(r.id) || this._splitRoom === r.id;
-        o += `<g data-er="${r.id}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${on ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="0.92"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${on ? "#fff" : "#345"}">${r.name}</text></g>`;
+        o += `<g data-er="${r.id}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${on ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="0.92"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${on ? "#fff" : "#345"}">${esc(r.name)}</text></g>`;
       });
     }
     if (this._splitLine) {
@@ -520,7 +522,7 @@ class DreameVacuumCard extends HTMLElement {
   _confirmSheet() {
     const c = this._cf; if (!c) return "";
     const verb = c.verb || "Continue", rec = c.backup && !this._backedUp;
-    return `<h4 style="margin:0 0 6px;font-size:1.2em">${c.title}</h4><div class="desc">${c.body || ""}</div>
+    return `<h4 style="margin:0 0 6px;font-size:1.2em">${esc(c.title)}</h4><div class="desc">${esc(c.body || "")}</div>
       ${rec ? `<div class="desc" style="margin-top:8px">Backing up the map first is recommended.</div>` : ""}
       <div class="seqbar" style="padding:0;flex-direction:column">
         ${rec ? `<button class="cta" data-cf="backup">Back up &amp; ${verb.toLowerCase()}</button><button class="cta ghost" data-cf="go">${verb} without backup</button>` : `<button class="cta" data-cf="go">${verb}</button>`}
@@ -528,13 +530,13 @@ class DreameVacuumCard extends HTMLElement {
   }
   _inputSheet() {
     const i = this._input; if (!i) return "";
-    return `<h4 style="margin:0 0 10px;font-size:1.2em">${i.title}</h4>
-      <input data-inp value="${String(i.value).replace(/"/g, "&quot;")}" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--divider-color,#0003);background:var(--dv-chip);color:var(--dv-fg);font:inherit;box-sizing:border-box">
+    return `<h4 style="margin:0 0 10px;font-size:1.2em">${esc(i.title)}</h4>
+      <input data-inp value="${esc(i.value)}" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--divider-color,#0003);background:var(--dv-chip);color:var(--dv-fg);font:inherit;box-sizing:border-box">
       <div class="seqbar" style="padding:0"><button class="cta ghost" data-in="cancel">Cancel</button><button class="cta" data-in="save">Save</button></div>`;
   }
   _listSheet() {
     const l = this._list; if (!l) return "";
-    return `<h4 style="margin:0 0 8px;font-size:1.2em">${l.title}</h4>${l.items.map((it, n) => `<div class="row" data-li="${n}" style="cursor:pointer"><span>${it.label}</span><ha-icon icon="mdi:chevron-right"></ha-icon></div>`).join("")}`;
+    return `<h4 style="margin:0 0 8px;font-size:1.2em">${esc(l.title)}</h4>${l.items.map((it, n) => `<div class="row" data-li="${n}" style="cursor:pointer"><span>${esc(it.label)}</span><ha-icon icon="mdi:chevron-right"></ha-icon></div>`).join("")}`;
   }
   _sheetBody(hasCustom) {
     switch (this._sheet) {
@@ -612,7 +614,7 @@ class DreameVacuumCard extends HTMLElement {
   _render() {
     const root = this.shadowRoot;
     const vac = this._vac();
-    if (!vac) { root.innerHTML = `<ha-card><div class="err">Entity not found: ${this._config.entity}</div></ha-card>`; return; }
+    if (!vac) { root.innerHTML = `<ha-card><div class="err">Entity not found: ${esc(this._config.entity)}</div></ha-card>`; return; }
     const a = vac.attributes;
     const name = this._config.name || a.friendly_name || "Vacuum";
     const stateTxt = this._hass.formatEntityState ? this._hass.formatEntityState(vac) : vac.state;
@@ -630,8 +632,8 @@ class DreameVacuumCard extends HTMLElement {
     const card = document.createElement("ha-card");
     card.innerHTML = `
       ${!this._editMode && !this._seqEdit && cam ? `<div class="editbtn" data-a="edit" title="Edit map"><ha-icon icon="mdi:pencil-outline"></ha-icon></div>` : ""}
-      ${this._error ? `<div class="err" data-a="clearerr" style="cursor:pointer">${this._error}</div>` : ""}
-      ${this._config.show_name ? `<div class="hdr"><div class="name">${name}</div><div class="state">${stateTxt}</div></div>` : ""}
+      ${this._error ? `<div class="err" data-a="clearerr" style="cursor:pointer">${esc(this._error)}</div>` : ""}
+      ${this._config.show_name ? `<div class="hdr"><div class="name">${esc(name)}</div><div class="state">${esc(stateTxt)}</div></div>` : ""}
       ${this._hasTemp() ? `<div class="banner">New map ready <span><button data-a="tmpsave">Save</button><button data-a="tmpreplace">Replace</button><button data-a="tmpdiscard">Discard</button></span></div>` : ""}
       ${maint ? this._maintBanner(low) : ""}
       <div class="stats">
@@ -701,7 +703,7 @@ class DreameVacuumCard extends HTMLElement {
       : "";
     const rid = c.reset !== null && this._find(`reset_${c.id}`);
     const canReset = rid && this._hass.states[rid]?.state !== "unavailable";
-    return `<div class="cons"><div class="top"><ha-icon icon="${c.icon}"></ha-icon><div class="nm">${c.label}<br><small>${left}</small></div>
+    return `<div class="cons"><div class="top"><ha-icon icon="${c.icon}"></ha-icon><div class="nm">${c.label}<br><small>${esc(left)}</small></div>
       <b>${ok ? Math.round(pct) + "%" : "–"}</b>${canReset ? `<button class="rchip" data-reset="${c.id}">Reset</button>` : ""}</div>
       <div class="prog"><div class="${lvl}" style="width:${ok ? Math.max(0, Math.min(100, pct)) : 0}%"></div></div></div>`;
   }
@@ -722,7 +724,7 @@ class DreameVacuumCard extends HTMLElement {
       const st = this._st(k);
       if (!st) return "";
       const bad = st.state !== "unavailable" && st.state !== "unknown" && !ok.includes(st.state);
-      return `<div class="row"><span>${label}</span><b style="${bad ? "color:#e53935" : ""}">${this._pretty(st)}</b></div>`;
+      return `<div class="row"><span>${label}</span><b style="${bad ? "color:#e53935" : ""}">${esc(this._pretty(st))}</b></div>`;
     }).join("");
     return `${rows}${this._baseButton("btn_auto_empty", "Start auto-empty", "")}
       ${this._baseButton("btn_water_tank_draining", "Drain water tank", "ghost", true)}
@@ -739,13 +741,13 @@ class DreameVacuumCard extends HTMLElement {
     const s = this._st(key);
     if (!s) return "";
     const opts = s.attributes.options || [];
-    return `<div class="opts">${opts.map((o) => `<button data-sel="${key}" data-opt="${o}" class="${o === s.state ? "on" : ""}">${this._hass.formatEntityState ? this._hass.formatEntityState(s, o) : o}</button>`).join("")}</div>`;
+    return `<div class="opts">${opts.map((o) => `<button data-sel="${key}" data-opt="${esc(o)}" class="${o === s.state ? "on" : ""}">${esc(this._hass.formatEntityState ? this._hass.formatEntityState(s, o) : o)}</button>`).join("")}</div>`;
   }
   _section(title, key) {
     const s = this._st(key);
     if (!s) return "";
     const cur = this._hass.formatEntityState ? this._hass.formatEntityState(s) : s.state;
-    return `<h4>${title}:</h4><div class="val">${cur}</div>${this._optionsRow(key)}`;
+    return `<h4>${title}:</h4><div class="val">${esc(cur)}</div>${this._optionsRow(key)}`;
   }
   _modeSheet(hasCustom) {
     const cm = this._st("cleaning_mode")?.state || "";
@@ -761,7 +763,7 @@ class DreameVacuumCard extends HTMLElement {
   _radios(key) {
     const s = this._st(key);
     if (!s) return "";
-    return `<div class="radios">${(s.attributes.options || []).map((o) => `<label><input type="radio" name="${key}" data-sel="${key}" data-opt="${o}" ${o === s.state ? "checked" : ""}>${this._hass.formatEntityState ? this._hass.formatEntityState(s, o) : o}</label>`).join("")}</div>`;
+    return `<div class="radios">${(s.attributes.options || []).map((o) => `<label><input type="radio" name="${key}" data-sel="${key}" data-opt="${esc(o)}" ${o === s.state ? "checked" : ""}>${esc(this._hass.formatEntityState ? this._hass.formatEntityState(s, o) : o)}</label>`).join("")}</div>`;
   }
   _switchRow(key, title, desc) {
     const s = this._st(key);
@@ -775,7 +777,7 @@ class DreameVacuumCard extends HTMLElement {
     const label = (o) => o.replace(/_/g, " ");
     return `<h4 style="margin:0 0 8px;font-size:1.2em">Select Map</h4>
       ${locked ? `<div class="desc" style="color:var(--error-color,#c00)">Can't switch maps while the robot is running.</div>` : ""}
-      ${(s.attributes.options || []).map((o) => `<div class="row" data-map="${o}" style="cursor:pointer;${locked ? "opacity:.5;pointer-events:none" : ""}"><span>${label(o)}</span>${o === s.state ? `<ha-icon icon="mdi:check" style="color:var(--dv-accent)"></ha-icon>` : ""}</div>`).join("")}
+      ${(s.attributes.options || []).map((o) => `<div class="row" data-map="${esc(o)}" style="cursor:pointer;${locked ? "opacity:.5;pointer-events:none" : ""}"><span>${esc(label(o))}</span>${o === s.state ? `<ha-icon icon="mdi:check" style="color:var(--dv-accent)"></ha-icon>` : ""}</div>`).join("")}
       <h4 style="margin:18px 0 6px">Manage this map</h4>
       <div class="opts" style="${locked ? "opacity:.5;pointer-events:none" : ""}"><button data-mm="rename">Rename</button><button data-mm="backup">Back up</button><button data-mm="restore">Restore</button><button data-mm="delete" style="color:var(--error-color,#c00)">Delete</button></div>`;
   }
@@ -783,8 +785,8 @@ class DreameVacuumCard extends HTMLElement {
     const n = this._st("self_clean_area");
     if (!n) return "";
     const a = n.attributes;
-    return `<h4>Frequency for returning to self-clean</h4><div class="val">By Area ${n.state} m²</div>
-      <input type="range" data-area min="${a.min ?? 10}" max="${a.max ?? 30}" step="${a.step ?? 1}" value="${n.state}" style="width:100%">`;
+    return `<h4>Frequency for returning to self-clean</h4><div class="val">By Area ${esc(n.state)} m²</div>
+      <input type="range" data-area min="${esc(a.min ?? 10)}" max="${esc(a.max ?? 30)}" step="${esc(a.step ?? 1)}" value="${esc(n.state)}" style="width:100%">`;
   }
   _cleanSheet() {
     const tab = this._tab;
@@ -827,13 +829,13 @@ class DreameVacuumCard extends HTMLElement {
         this._rooms().forEach((r, i) => {
           const c = cal.toImg((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
           const n = this._sequence.indexOf(r.id) + 1;
-          out += `<g data-seq="${r.id}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${n ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="0.9"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${n ? "#fff" : "#345"}">${r.name}</text>${n ? `<circle cx="${c.x - fs * 3}" cy="${c.y - fs * 0.9}" r="${fs * 0.9}" fill="#fff" stroke="#3d6bff" stroke-width="${fs / 10}"/><text x="${c.x - fs * 3}" y="${c.y - fs * 0.55}" text-anchor="middle" font-size="${fs * 1.1}" font-weight="600" fill="#3d6bff">${n}</text>` : ""}</g>`;
+          out += `<g data-seq="${r.id}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${n ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="0.9"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${n ? "#fff" : "#345"}">${esc(r.name)}</text>${n ? `<circle cx="${c.x - fs * 3}" cy="${c.y - fs * 0.9}" r="${fs * 0.9}" fill="#fff" stroke="#3d6bff" stroke-width="${fs / 10}"/><text x="${c.x - fs * 3}" y="${c.y - fs * 0.55}" text-anchor="middle" font-size="${fs * 1.1}" font-weight="600" fill="#3d6bff">${n}</text>` : ""}</g>`;
         });
       } else if (this._mode === "room") {
         this._rooms().forEach((r, i) => {
           const c = cal.toImg((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
           const on = this._selectedRooms.has(r.id);
-          out += `<g data-room="${r.id}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${on ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="${on ? 0.95 : 0.8}"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${on ? "#fff" : "#345"}">${r.name ?? r.id}</text>${custom ? `<text x="${c.x}" y="${c.y + fs * 1.9}" text-anchor="middle" font-size="${fs * 0.75}" fill="#345">${["Quiet", "Std", "Strong", "Turbo"][r.suction_level] ?? ""} · x${r.cleaning_times ?? 1}</text>` : ""}</g>`;
+          out += `<g data-room="${r.id}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${on ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="${on ? 0.95 : 0.8}"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${on ? "#fff" : "#345"}">${esc(r.name ?? r.id)}</text>${custom ? `<text x="${c.x}" y="${c.y + fs * 1.9}" text-anchor="middle" font-size="${fs * 0.75}" fill="#345">${["Quiet", "Std", "Strong", "Turbo"][r.suction_level] ?? ""} · x${r.cleaning_times ?? 1}</text>` : ""}</g>`;
         });
       }
       for (const z of (this._editMode ? [] : this._zones)) {
