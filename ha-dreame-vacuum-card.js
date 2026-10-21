@@ -8,7 +8,7 @@
  * self-cleaning (wash / dry / auto-empty).
  */
 
-const CARD_VERSION = "0.3.2";
+const CARD_VERSION = "0.4.0";
 const DOMAIN = "dreame_vacuum";
 // Escape untrusted text (entity states/attributes, map and room names, config) before it goes into innerHTML.
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -169,7 +169,7 @@ class DreameVacuumCard extends HTMLElement {
   }
 
   getCardSize() { return 10; }
-  static getConfigElement() { return document.createElement("dreame-vacuum-card-editor"); }
+  static getConfigElement() { return document.createElement("dreame-app-vacuum-card-editor"); }
   static getStubConfig(hass) {
     const v = Object.keys(hass.states).find((e) => e.startsWith("vacuum.") && hass.entities?.[e]?.platform === DOMAIN);
     return { entity: v || "vacuum.dreame" };
@@ -965,12 +965,12 @@ class DreameVacuumCardEditor extends HTMLElement {
   }
 }
 
-customElements.define("dreame-vacuum-card", DreameVacuumCard);
-customElements.define("dreame-vacuum-card-editor", DreameVacuumCardEditor);
+customElements.define("dreame-app-vacuum-card", DreameVacuumCard);
+customElements.define("dreame-app-vacuum-card-editor", DreameVacuumCardEditor);
 window.customCards = window.customCards || [];
 window.customCards.push({
-  type: "dreame-vacuum-card",
-  name: "Dreame Vacuum Card",
+  type: "dreame-app-vacuum-card",
+  name: "Dreame App Vacuum Card",
   description: "App-style control card for the dreame_vacuum integration",
 });
-console.info(`%c DREAME-VACUUM-CARD %c v${CARD_VERSION} `, "background:#3d6bff;color:#fff", "");
+console.info(`%c DREAME-APP-VACUUM-CARD %c v${CARD_VERSION} `, "background:#3d6bff;color:#fff", "");

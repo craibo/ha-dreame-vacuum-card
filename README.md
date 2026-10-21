@@ -47,8 +47,10 @@ A Lovelace card for the [`dreame_vacuum`](https://github.com/Tasshack/dreame-vac
 
 ## Config
 
+> **Upgrading from ≤ 0.3.x:** the card type was renamed from `custom:dreame-vacuum-card` to `custom:dreame-app-vacuum-card` to avoid clashing with another card of the same name. Update `type:` in your dashboards.
+
 ```yaml
-type: custom:dreame-vacuum-card
+type: custom:dreame-app-vacuum-card
 entity: vacuum.l10s_ultra
 # optional
 camera: camera.l10s_ultra_map
