@@ -35,7 +35,14 @@ A Lovelace card for the [`dreame_vacuum`](https://github.com/Tasshack/dreame-vac
 
 ## Install
 
-### HACS (custom repository)
+### HACS
+
+1. Open HACS, search for **Dreame Vacuum Card** and install it.
+2. Reload the browser.
+
+> New to the default list? It can take a few hours after merge for the card to appear in HACS search. Until then, or if you can't find it, use the custom repository steps below.
+
+### HACS (custom repository, fallback)
 
 1. HACS → ⋮ → Custom repositories → add `https://github.com/craibo/ha-dreame-vacuum-card`, type **Dashboard**.
 2. Install **Dreame Vacuum Card** and reload the browser.
