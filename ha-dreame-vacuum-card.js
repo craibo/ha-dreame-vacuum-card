@@ -835,7 +835,7 @@ class DreameVacuumCard extends HTMLElement {
         this._rooms().forEach((r, i) => {
           const c = cal.toImg((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
           const on = this._selectedRooms.has(r.id);
-          out += `<g data-room="${esc(r.id)}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${on ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="${on ? 0.95 : 0.8}"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${on ? "#fff" : "#345"}">${esc(r.name ?? r.id)}</text>${custom ? `<text x="${c.x}" y="${c.y + fs * 1.9}" text-anchor="middle" font-size="${fs * 0.75}" fill="#345">${["Quiet", "Std", "Strong", "Turbo"][r.suction_level] ?? ""} · x${esc(r.cleaning_times ?? 1)}</text>` : ""}</g>`;
+          out += `<g data-room="${esc(r.id)}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${on ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="${on ? 0.95 : 0.8}"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${on ? "#fff" : "#345"}">${esc(r.name ?? r.id)}</text>${custom ? `<text x="${c.x}" y="${c.y + fs * 1.9}" text-anchor="middle" font-size="${fs * 0.75}" fill="#345">${esc(["Quiet", "Std", "Strong", "Turbo"][r.suction_level] ?? "")} · x${esc(r.cleaning_times ?? 1)}</text>` : ""}</g>`;
         });
       }
       for (const z of (this._editMode ? [] : this._zones)) {
