@@ -1,5 +1,8 @@
 # Dreame Vacuum Card
 
+[![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/craibo/ha-dreame-vacuum-card?color=41BDF5&style=for-the-badge)](https://github.com/craibo/ha-dreame-vacuum-card/releases/latest)
+
 <p align="center"><img src="brand/icon.png" width="96" alt="Dreame Vacuum Card"></p>
 
 <p align="center"><img src="docs/screenshot.png" width="360" alt="Dreame Vacuum Card screenshot"></p>
@@ -35,7 +38,15 @@ A Lovelace card for the [`dreame_vacuum`](https://github.com/Tasshack/dreame-vac
 
 ## Install
 
-### HACS (custom repository)
+### HACS
+
+1. [![Open your Home Assistant instance and open this repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=craibo&repository=ha-dreame-vacuum-card&category=plugin)
+   Or open HACS, search for **Dreame Vacuum Card** and install it.
+2. Reload the browser.
+
+> New to the default list? It can take a few hours after merge for the card to appear in HACS search. Until then, or if you can't find it, use the custom repository steps below.
+
+### HACS (custom repository, fallback)
 
 1. HACS → ⋮ → Custom repositories → add `https://github.com/craibo/ha-dreame-vacuum-card`, type **Dashboard**.
 2. Install **Dreame Vacuum Card** and reload the browser.
