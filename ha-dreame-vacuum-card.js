@@ -8,7 +8,7 @@
  * self-cleaning (wash / dry / auto-empty).
  */
 
-const CARD_VERSION = "0.3.1";
+const CARD_VERSION = "0.3.2";
 const DOMAIN = "dreame_vacuum";
 // Escape untrusted text (entity states/attributes, map and room names, config) before it goes into innerHTML.
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -478,7 +478,7 @@ class DreameVacuumCard extends HTMLElement {
       this._rooms().forEach((r, i) => {
         const c = cal.toImg((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
         const on = this._editRooms.has(r.id) || this._splitRoom === r.id;
-        o += `<g data-er="${r.id}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${on ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="0.92"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${on ? "#fff" : "#345"}">${esc(r.name)}</text></g>`;
+        o += `<g data-er="${esc(r.id)}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${on ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="0.92"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${on ? "#fff" : "#345"}">${esc(r.name)}</text></g>`;
       });
     }
     if (this._splitLine) {
@@ -637,9 +637,9 @@ class DreameVacuumCard extends HTMLElement {
       ${this._hasTemp() ? `<div class="banner">New map ready <span><button data-a="tmpsave">Save</button><button data-a="tmpreplace">Replace</button><button data-a="tmpdiscard">Discard</button></span></div>` : ""}
       ${maint ? this._maintBanner(low) : ""}
       <div class="stats">
-        <div class="stat"><b>${area}</b><small>m²</small><div>Cleaning Area</div></div>
-        <div class="stat"><b>${time}</b><small>min</small><div>Runtime</div></div>
-        <div class="stat"><b>${batt}</b><small>%</small><div>Battery</div></div>
+        <div class="stat"><b>${esc(area)}</b><small>m²</small><div>Cleaning Area</div></div>
+        <div class="stat"><b>${esc(time)}</b><small>min</small><div>Runtime</div></div>
+        <div class="stat"><b>${esc(batt)}</b><small>%</small><div>Battery</div></div>
       </div>
       <div class="mapwrap">
         ${pic ? `<img data-map>` : `<div class="err">No map camera found</div>`}
@@ -662,7 +662,7 @@ class DreameVacuumCard extends HTMLElement {
       <div class="bar">
         <div class="item" data-a="maps"><ha-icon icon="mdi:layers"></ha-icon>Map</div>
         <button class="go" data-a="go"><ha-icon icon="mdi:${cleaning ? "pause" : "play"}"></ha-icon></button>
-        <div class="item" data-a="dock"><ha-icon icon="mdi:${vac.state === "docked" ? "lightning-bolt" : "home-import-outline"}"></ha-icon>${vac.state === "docked" ? stateTxt : "Return to dock"}</div>
+        <div class="item" data-a="dock"><ha-icon icon="mdi:${vac.state === "docked" ? "lightning-bolt" : "home-import-outline"}"></ha-icon>${vac.state === "docked" ? esc(stateTxt) : "Return to dock"}</div>
       </div>`}
       ${this._sheet ? `<div class="sheet-bg" data-a="closesheet"><div class="sheet" data-stop="1">${this._sheetBody(hasCustom)}</div></div>` : ""}
     `;
@@ -829,13 +829,13 @@ class DreameVacuumCard extends HTMLElement {
         this._rooms().forEach((r, i) => {
           const c = cal.toImg((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
           const n = this._sequence.indexOf(r.id) + 1;
-          out += `<g data-seq="${r.id}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${n ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="0.9"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${n ? "#fff" : "#345"}">${esc(r.name)}</text>${n ? `<circle cx="${c.x - fs * 3}" cy="${c.y - fs * 0.9}" r="${fs * 0.9}" fill="#fff" stroke="#3d6bff" stroke-width="${fs / 10}"/><text x="${c.x - fs * 3}" y="${c.y - fs * 0.55}" text-anchor="middle" font-size="${fs * 1.1}" font-weight="600" fill="#3d6bff">${n}</text>` : ""}</g>`;
+          out += `<g data-seq="${esc(r.id)}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${n ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="0.9"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${n ? "#fff" : "#345"}">${esc(r.name)}</text>${n ? `<circle cx="${c.x - fs * 3}" cy="${c.y - fs * 0.9}" r="${fs * 0.9}" fill="#fff" stroke="#3d6bff" stroke-width="${fs / 10}"/><text x="${c.x - fs * 3}" y="${c.y - fs * 0.55}" text-anchor="middle" font-size="${fs * 1.1}" font-weight="600" fill="#3d6bff">${n}</text>` : ""}</g>`;
         });
       } else if (this._mode === "room") {
         this._rooms().forEach((r, i) => {
           const c = cal.toImg((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
           const on = this._selectedRooms.has(r.id);
-          out += `<g data-room="${r.id}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${on ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="${on ? 0.95 : 0.8}"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${on ? "#fff" : "#345"}">${esc(r.name ?? r.id)}</text>${custom ? `<text x="${c.x}" y="${c.y + fs * 1.9}" text-anchor="middle" font-size="${fs * 0.75}" fill="#345">${["Quiet", "Std", "Strong", "Turbo"][r.suction_level] ?? ""} · x${r.cleaning_times ?? 1}</text>` : ""}</g>`;
+          out += `<g data-room="${esc(r.id)}" style="cursor:pointer"><rect x="${c.x - fs * 3}" y="${c.y - fs * 0.9}" width="${fs * 6}" height="${fs * 1.8}" rx="${fs * 0.9}" fill="${on ? "#3d6bff" : ROOM_COLORS[i % ROOM_COLORS.length]}" opacity="${on ? 0.95 : 0.8}"/><text x="${c.x}" y="${c.y + fs * 0.35}" text-anchor="middle" font-size="${fs}" fill="${on ? "#fff" : "#345"}">${esc(r.name ?? r.id)}</text>${custom ? `<text x="${c.x}" y="${c.y + fs * 1.9}" text-anchor="middle" font-size="${fs * 0.75}" fill="#345">${esc(["Quiet", "Std", "Strong", "Turbo"][r.suction_level] ?? "")} · x${esc(r.cleaning_times ?? 1)}</text>` : ""}</g>`;
         });
       }
       for (const z of (this._editMode ? [] : this._zones)) {
