@@ -8,7 +8,7 @@
  * self-cleaning (wash / dry / auto-empty).
  */
 
-const CARD_VERSION = "0.4.2";
+const CARD_VERSION = "0.4.3";
 const DOMAIN = "dreame_vacuum";
 // Escape untrusted text (entity states/attributes, map and room names, config) before it goes into innerHTML.
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -128,6 +128,7 @@ ha-card { overflow:hidden; position:relative; padding:0 0 12px; }
 .cta.ghost { background:var(--dv-chip); color:var(--dv-fg); }
 .editbtn { position:absolute; right:10px; top:10px; width:36px; height:36px; border-radius:50%; background:var(--dv-chip); display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:2; }
 .banner { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:6px 12px; padding:8px 12px; border-radius:12px; background:var(--dv-chip); font-size:.9em; }
+.banner.alert { border-left:4px solid var(--error-color,#e53935); }
 .banner button { border:0; background:var(--dv-accent); color:#fff; border-radius:999px; padding:5px 10px; margin-left:4px; font:inherit; font-size:.85em; cursor:pointer; }
 .tools { display:flex; gap:6px; padding:10px 12px 0; overflow-x:auto; }
 .tool { flex:0 0 auto; display:flex; flex-direction:column; align-items:center; font-size:.72em; padding:6px 10px; border-radius:12px; background:var(--dv-chip); cursor:pointer; color:var(--dv-fg); min-width:52px; }
@@ -165,6 +166,7 @@ class DreameVacuumCard extends HTMLElement {
     this._sheet = null; // null | "mode" | "clean"
     this._tab = "wash";
     this._maintDismissed = new Set(); // part ids whose banner was dismissed this session
+    this._alertDismissed = new Set(); // "key:state" of alerts dismissed until they change or clear
     this._mtab = "cons"; // maintenance sheet tab: cons | base
     this._cache = {};
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
@@ -644,6 +646,7 @@ class DreameVacuumCard extends HTMLElement {
       ${this._error ? `<div class="err" data-a="clearerr" style="cursor:pointer">${esc(this._error)}</div>` : ""}
       ${this._config.show_name ? `<div class="hdr"><div class="name">${esc(name)}</div><div class="state">${esc(stateTxt)}</div></div>` : ""}
       ${this._hasTemp() ? `<div class="banner">New map ready <span><button data-a="tmpsave">Save</button><button data-a="tmpreplace">Replace</button><button data-a="tmpdiscard">Discard</button></span></div>` : ""}
+      ${this._alertBanner()}
       ${maint ? this._maintBanner(low) : ""}
       <div class="stats">
         <div class="stat"><b>${esc(area)}</b><small>m²</small><div>Cleaning Area</div></div>
@@ -692,6 +695,22 @@ class DreameVacuumCard extends HTMLElement {
     });
     for (const id of [...this._maintDismissed]) if (!low.some((c) => c.id === id)) this._maintDismissed.delete(id);
     return low;
+  }
+  // Active robot error / low-water warning (anything the Base Station tab would flag red). Forgets dismissals once cleared or changed.
+  _alerts() {
+    const out = BASE_STATUS.filter(([k]) => k === "error" || k === "low_water_warning").flatMap(([k, label, ok]) => {
+      const st = this._st(k);
+      if (!st || ["unavailable", "unknown"].includes(st.state) || ok.includes(st.state)) return [];
+      return [{ id: `${k}:${st.state}`, text: `${label}: ${this._pretty(st)}` }];
+    });
+    for (const id of [...this._alertDismissed]) if (!out.some((a) => a.id === id)) this._alertDismissed.delete(id);
+    return out;
+  }
+  _alertBanner() {
+    if (this._editMode || this._seqEdit) return "";
+    const fresh = this._alerts().filter((a) => !this._alertDismissed.has(a.id));
+    if (!fresh.length) return "";
+    return fresh.map((a) => `<div class="banner alert"><span>${esc(a.text)}</span><span>${this._hasBase() ? `<button data-a="alertview">View</button>` : ""}<button data-a="alertdismiss" data-aid="${esc(a.id)}">Dismiss</button></span></div>`).join("");
   }
   _maintBanner(low) {
     const fresh = low.filter((c) => !this._maintDismissed.has(c.id));
@@ -888,6 +907,8 @@ class DreameVacuumCard extends HTMLElement {
       const act = el.dataset.a;
       if (act === "closesheet") { if (ev.target === el) { this._sheet = null; this._render(); } return; }
       if (act === "mode" || act === "clean" || act === "maint") { this._sheet = act; this._render(); }
+      else if (act === "alertview") { this._mtab = "base"; this._sheet = "maint"; this._render(); }
+      else if (act === "alertdismiss") { this._alertDismissed.add(el.dataset.aid); this._render(); }
       else if (act === "maintdismiss") { this._low().forEach((c) => this._maintDismissed.add(c.id)); this._render(); }
       else if (act === "edit") this._enterEdit();
       else if (act === "eexit") this._exitEdit();
