@@ -26,7 +26,7 @@
 A Lovelace card for the [`dreame_vacuum`](https://github.com/Tasshack/dreame-vacuum) integration, laid out like the Dreame app. It uses only the integration's public entities, attributes and services, and has no build step.
 
 - Header with state, plus cleaning area, runtime and battery
-- Live map from the integration's camera, with room labels and drag-to-draw zones
+- Live map from the integration's camera, with room labels and drag-to-draw zone (one at a time)
 - Room / All / Zone modes, cleaning times, start / pause, return to dock
 - Cleaning Mode sheet: mode, suction, mop dampness, customized cleaning
 - Cleaning sequence: Cleaning Mode sheet → Cleaning Sequence, tap rooms in order, Done
