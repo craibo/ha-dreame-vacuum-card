@@ -8,7 +8,7 @@
  * self-cleaning (wash / dry / auto-empty).
  */
 
-const CARD_VERSION = "0.4.4";
+const CARD_VERSION = "0.4.5";
 const DOMAIN = "dreame_vacuum";
 // Escape untrusted text (entity states/attributes, map and room names, config) before it goes into innerHTML.
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -128,8 +128,8 @@ ha-card { overflow:hidden; position:relative; padding:0 0 12px; }
 .cta.ghost { background:var(--dv-chip); color:var(--dv-fg); }
 .editbtn { position:absolute; right:10px; top:10px; width:36px; height:36px; border-radius:50%; background:var(--dv-chip); display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:2; }
 .banner { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:6px 12px; padding:8px 12px; border-radius:12px; background:var(--dv-chip); font-size:.9em; }
-.banner.alert { border-left:4px solid var(--error-color,#e53935); flex-direction:column; align-items:flex-start; gap:10px; }
-.banner.alert .acts { display:flex; gap:10px; }
+.banner.alert { border-left:4px solid var(--error-color,#e53935); flex-direction:column; align-items:stretch; gap:10px; }
+.banner.alert .acts { display:flex; justify-content:flex-end; gap:10px; }
 .banner.alert button { margin-left:0; padding:6px 14px; }
 .banner button { border:0; background:var(--dv-accent); color:#fff; border-radius:999px; padding:5px 10px; margin-left:4px; font:inherit; font-size:.85em; cursor:pointer; }
 .tools { display:flex; gap:6px; padding:10px 12px 0; overflow-x:auto; }
