@@ -603,11 +603,10 @@ class DreameVacuumCard extends HTMLElement {
       const p = pt(ev), s = start; start = null; this._dragging = false;
       if (Math.abs(p.x - s.x) > 8 && Math.abs(p.y - s.y) > 8) {
         const a = cal.toVac(s.x, s.y), b = cal.toVac(p.x, p.y);
-        // Only one zone at a time: a new selection replaces the previous one.
-        this._zones = [[
+        this._zones.push([
           Math.round(Math.min(a.x, b.x)), Math.round(Math.min(a.y, b.y)),
           Math.round(Math.max(a.x, b.x)), Math.round(Math.max(a.y, b.y)),
-        ]];
+        ]);
       }
       this._render();
     });
@@ -654,7 +653,7 @@ class DreameVacuumCard extends HTMLElement {
         </div>
         <div class="left">
           ${this._mode === "room" && hasCustom && this._selectedRooms.size ? `<div class="leftbtn" data-a="roomsettings"><div class="ic"><ha-icon icon="mdi:cog-outline"></ha-icon></div>Room Settings</div>` : ""}
-          ${this._mode === "zone" ? `<div class="leftbtn" data-a="clearzones"><div class="ic"><ha-icon icon="mdi:vector-square-remove"></ha-icon></div>Clear Zone</div>` : ""}
+          ${this._mode === "zone" ? `<div class="leftbtn" data-a="clearzones"><div class="ic"><ha-icon icon="mdi:vector-square-remove"></ha-icon></div>Clear Zones</div>` : ""}
           ${this._mode !== "all" ? `<div class="leftbtn" data-a="times"><div class="ic">x${this._repeats}</div>Cleaning Times</div>` : ""}
         </div>
       </div>
