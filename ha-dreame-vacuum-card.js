@@ -8,7 +8,7 @@
  * self-cleaning (wash / dry / auto-empty).
  */
 
-const CARD_VERSION = "0.4.1";
+const CARD_VERSION = "0.4.2";
 const DOMAIN = "dreame_vacuum";
 // Escape untrusted text (entity states/attributes, map and room names, config) before it goes into innerHTML.
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -286,10 +286,15 @@ class DreameVacuumCard extends HTMLElement {
   }
 
   // ---------- actions ----------
+  // Robot is on the dock recharging mid-task (HA reports it as "paused" with charging + resume_cleaning set).
+  _charging(vac = this._vac()) { const c = vac.attributes.charging; return c === true || c === 1 || c === "true"; }
+  _resumable(vac = this._vac()) { return vac.state === "paused" && vac.attributes.resume_cleaning === true; }
   _start() {
     const id = this._config.entity;
     const state = this._vac().state;
     if (state === "cleaning") return this._call("vacuum", "pause", {}, id);
+    // Paused task waiting to resume: continue it instead of starting a new room/zone job.
+    if (this._resumable()) return this._call("vacuum", "start", {}, id);
     const times = this._repeats;
     if (this._mode === "room" && this._selectedRooms.size) {
       return this._call(DOMAIN, "vacuum_clean_segment", { segments: [...this._selectedRooms], repeats: times }, id);
@@ -619,7 +624,9 @@ class DreameVacuumCard extends HTMLElement {
     if (!vac) { root.innerHTML = `<ha-card><div class="err">Entity not found: ${esc(this._config.entity)}</div></ha-card>`; return; }
     const a = vac.attributes;
     const name = this._config.name || a.friendly_name || "Vacuum";
-    const stateTxt = this._hass.formatEntityState ? this._hass.formatEntityState(vac) : vac.state;
+    const charging = this._charging(vac), resumable = this._resumable(vac);
+    const stateTxt = charging && resumable ? "Charging, will resume cleaning"
+      : this._hass.formatEntityState ? this._hass.formatEntityState(vac) : vac.state;
     const area = this._st("cleaned_area")?.state ?? a.cleaned_area ?? "–";
     const time = this._st("cleaning_time")?.state ?? a.cleaning_time ?? "–";
     const batt = this._st("battery")?.state ?? a.battery_level ?? "–";
@@ -641,7 +648,7 @@ class DreameVacuumCard extends HTMLElement {
       <div class="stats">
         <div class="stat"><b>${esc(area)}</b><small>m²</small><div>Cleaning Area</div></div>
         <div class="stat"><b>${esc(time)}</b><small>min</small><div>Runtime</div></div>
-        <div class="stat"><b>${esc(batt)}</b><small>%</small><div>Battery</div></div>
+        <div class="stat"><b>${esc(batt)}</b><small>%</small>${charging ? `<ha-icon icon="mdi:lightning-bolt" style="--mdc-icon-size:16px;color:var(--dv-accent)"></ha-icon>` : ""}<div>Battery</div></div>
       </div>
       <div class="mapwrap">
         ${pic ? `<img data-map>` : `<div class="err">No map camera found</div>`}
@@ -664,7 +671,7 @@ class DreameVacuumCard extends HTMLElement {
       <div class="bar">
         <div class="item" data-a="maps"><ha-icon icon="mdi:layers"></ha-icon>Map</div>
         <button class="go" data-a="go"><ha-icon icon="mdi:${cleaning ? "pause" : "play"}"></ha-icon></button>
-        <div class="item" data-a="dock"><ha-icon icon="mdi:${vac.state === "docked" ? "lightning-bolt" : "home-import-outline"}"></ha-icon>${vac.state === "docked" ? esc(stateTxt) : "Return to dock"}</div>
+        <div class="item" data-a="dock"><ha-icon icon="mdi:${vac.state === "docked" || charging ? "lightning-bolt" : "home-import-outline"}"></ha-icon>${vac.state === "docked" ? esc(stateTxt) : charging ? "Charging" : "Return to dock"}</div>
       </div>`}
       ${this._sheet ? `<div class="sheet-bg" data-a="closesheet"><div class="sheet" data-stop="1">${this._sheetBody(hasCustom)}</div></div>` : ""}
     `;
