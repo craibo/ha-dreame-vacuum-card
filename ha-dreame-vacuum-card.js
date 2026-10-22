@@ -8,7 +8,7 @@
  * self-cleaning (wash / dry / auto-empty).
  */
 
-const CARD_VERSION = "0.4.0";
+const CARD_VERSION = "0.4.1";
 const DOMAIN = "dreame_vacuum";
 // Escape untrusted text (entity states/attributes, map and room names, config) before it goes into innerHTML.
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -90,9 +90,11 @@ ha-card { overflow:hidden; position:relative; padding:0 0 12px; }
 .stat b { font-size:1.9em; font-weight:400; }
 .stat small { font-size:.9em; margin-left:2px; }
 .stat div { color:var(--dv-dim); font-size:.85em; }
-.mapwrap { position:relative; margin:0 12px; min-height:240px; user-select:none; touch-action:none; }
+.mapwrap { position:relative; margin:0 12px; min-height:240px; user-select:none; }
 .mapwrap img { width:100%; display:block; pointer-events:none; }
 .mapwrap svg { position:absolute; inset:0; width:100%; height:100%; }
+/* Only block touch scrolling on the overlay while a drag-to-draw tool is active; otherwise a finger on the map scrolls the dashboard. */
+.mapwrap svg.draw { touch-action:none; }
 .side { position:absolute; right:0; top:8px; display:flex; flex-direction:column; gap:14px; }
 .sidebtn, .leftbtn { display:flex; flex-direction:column; align-items:center; font-size:.75em; cursor:pointer; text-align:center; width:76px; color:var(--dv-fg); }
 .sidebtn .ic, .leftbtn .ic { width:46px; height:46px; border-radius:14px; background:var(--dv-chip); display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px #0002; margin-bottom:4px; font-weight:500; font-size:1.5em; }
@@ -860,6 +862,8 @@ class DreameVacuumCard extends HTMLElement {
       }));
       svg.querySelectorAll("[data-seq]").forEach((g) => g.addEventListener("click", () => this._toggleSequenceRoom(Number(g.dataset.seq))));
       svg.style.pointerEvents = this._mode === "all" && !this._seqEdit && !this._editMode ? "none" : "auto";
+      const drawing = this._editMode ? ["wall", "nogo", "nomop", "split"].includes(this._tool) : this._mode === "zone" && !this._seqEdit;
+      svg.classList.toggle("draw", drawing);
       if (this._editMode) {
         svg.querySelectorAll("[data-ek]").forEach((el) => el.addEventListener("click", (ev) => {
           ev.stopPropagation(); this._editSel = { k: el.dataset.ek, i: Number(el.dataset.ei) }; this._render();
