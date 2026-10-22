@@ -8,7 +8,7 @@
  * self-cleaning (wash / dry / auto-empty).
  */
 
-const CARD_VERSION = "0.4.3";
+const CARD_VERSION = "0.4.4";
 const DOMAIN = "dreame_vacuum";
 // Escape untrusted text (entity states/attributes, map and room names, config) before it goes into innerHTML.
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -128,7 +128,9 @@ ha-card { overflow:hidden; position:relative; padding:0 0 12px; }
 .cta.ghost { background:var(--dv-chip); color:var(--dv-fg); }
 .editbtn { position:absolute; right:10px; top:10px; width:36px; height:36px; border-radius:50%; background:var(--dv-chip); display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:2; }
 .banner { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:6px 12px; padding:8px 12px; border-radius:12px; background:var(--dv-chip); font-size:.9em; }
-.banner.alert { border-left:4px solid var(--error-color,#e53935); }
+.banner.alert { border-left:4px solid var(--error-color,#e53935); flex-direction:column; align-items:flex-start; gap:10px; }
+.banner.alert .acts { display:flex; gap:10px; }
+.banner.alert button { margin-left:0; padding:6px 14px; }
 .banner button { border:0; background:var(--dv-accent); color:#fff; border-radius:999px; padding:5px 10px; margin-left:4px; font:inherit; font-size:.85em; cursor:pointer; }
 .tools { display:flex; gap:6px; padding:10px 12px 0; overflow-x:auto; }
 .tool { flex:0 0 auto; display:flex; flex-direction:column; align-items:center; font-size:.72em; padding:6px 10px; border-radius:12px; background:var(--dv-chip); cursor:pointer; color:var(--dv-fg); min-width:52px; }
@@ -710,7 +712,7 @@ class DreameVacuumCard extends HTMLElement {
     if (this._editMode || this._seqEdit) return "";
     const fresh = this._alerts().filter((a) => !this._alertDismissed.has(a.id));
     if (!fresh.length) return "";
-    return fresh.map((a) => `<div class="banner alert"><span>${esc(a.text)}</span><span>${this._hasBase() ? `<button data-a="alertview">View</button>` : ""}<button data-a="alertdismiss" data-aid="${esc(a.id)}">Dismiss</button></span></div>`).join("");
+    return fresh.map((a) => `<div class="banner alert"><span>${esc(a.text)}</span><span class="acts">${this._hasBase() ? `<button data-a="alertview">View</button>` : ""}<button data-a="alertdismiss" data-aid="${esc(a.id)}">Dismiss</button></span></div>`).join("");
   }
   _maintBanner(low) {
     const fresh = low.filter((c) => !this._maintDismissed.has(c.id));
